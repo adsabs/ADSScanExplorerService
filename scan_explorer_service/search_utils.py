@@ -24,17 +24,6 @@ page_query_translations = dict({
 })
 
 
-def parse_query_args(args):
-    qs = args.get('q', '', str)
-    qs_arr = [q for q in shlex.split(qs) if ':' in q]
-    qs_dict = dict(kv.split(':') for kv in qs_arr)
-
-    page = args.get('page', 1, int)
-    limit = args.get('limit', 10, int)
-
-    return qs_dict, page, limit
-
-
 def serialize_result(db_session, result: Pagination, contentQuery = ''):
     return {'page': result.page, 'pageCount': result.pages, 'limit': result.per_page, 'total': result.total, 'query': contentQuery, 
     'items': [item.serialized | fetch_ads_metadata(db_session, item.id) for item in result.items]}

@@ -1,7 +1,6 @@
-import uuid
 from flask import current_app
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, ForeignKey, Integer, String, Table, UniqueConstraint, Enum, Index, or_
+from sqlalchemy import Column, ForeignKey, Integer, String, Table, UniqueConstraint, Enum, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy_utils.models import Timestamp
 import enum
@@ -37,9 +36,7 @@ class PageType(enum.Enum):
 
         return PageType.Normal
 
-
 class Collection(Base, Timestamp):
-
     def __init__(self, **kwargs):
         self.type = kwargs.get('type')
         self.journal = kwargs.get('journal')
@@ -62,16 +59,13 @@ class Collection(Base, Timestamp):
     UniqueConstraint(journal, volume)
 
     @property
-    def serialized(self):
-        """Return object data in serializeable format"""
-        return {
-            'id': self.id,
-            'type': 'collection',
-            'journal': self.journal,
-            'volume': self.volume,
-            'pages': self.pages.count(),
-            'thumbnail': self.pages.first().thumbnail_url
-        }
+    def page_count(self):
+        return self.pages.count()
+
+    @property
+    def thumbnail(self):
+        return self.pages.first().thumbnail
+
 
 
 page_article_association_table = Table('page2article', Base.metadata,
@@ -100,17 +94,14 @@ class Article(Base, Timestamp):
     pages = relationship('Page', secondary=page_article_association_table,
                          back_populates='articles', lazy='dynamic', order_by="Page.volume_running_page_num", cascade="all,delete")
 
+
     @property
-    def serialized(self):
-        """Return object data in serializeable format"""
-        return {
-            'id': self.id,
-            'type': 'article',
-            'bibcode': self.bibcode,
-            'pages': self.pages.count(),
-            'thumbnail': self.pages.first().thumbnail_url,
-            'collection_id': self.collection_id
-        }
+    def page_count(self):
+        return self.pages.count()
+
+    @property
+    def thumbnail(self):
+        return self.pages.first().thumbnail
 
 
 class Page(Base, Timestamp):
@@ -163,18 +154,5 @@ class Page(Base, Timestamp):
         return image_path
 
     @property
-    def thumbnail_url(self):
+    def thumbnail(self):
         return f'{self.image_url}/square/480,480/0/default.jpg'
-
-    @property
-    def serialized(self):
-        """Return object data in serializeable format"""
-        return {
-            'id': self.id,
-            'type': 'page',
-            'label': self.label,
-            'collection_id': self.collection_id,
-            'volume_page_num': self.volume_running_page_num,
-            'articles': [a.id for a in self.articles],
-            'thumbnail': self.thumbnail_url
-        }
