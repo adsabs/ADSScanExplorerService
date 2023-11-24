@@ -3,6 +3,7 @@ from iiif_prezi.factory import ManifestFactory, Sequence, Canvas, Image, Annotat
 from scan_explorer_service.models import Article, Page, Collection
 from typing import Union
 from itertools import chain
+from scan_explorer_service.views.view_utils import logger
 
 class ManifestFactoryExtended(ManifestFactory):
     """ Extended manifest factory.
@@ -12,30 +13,37 @@ class ManifestFactoryExtended(ManifestFactory):
     """
 
     def create_manifest(self, item: Union[Article, Collection]):
+        logger.debug(f"Creating manifest for item: {item}") 
         manifest = self.manifest(
             ident=f'{item.id}/manifest.json', label=item.id)
         manifest.description = item.id
         manifest.add_sequence(self.create_sequence(item))
         for range in self.create_range(item):
             manifest.add_range(range)
-        
+        logger.debug(f"Manifest created: {manifest}") 
         return manifest
 
     def create_sequence(self, item: Union[Article, Collection]):
+        logger.debug(f"Creating sequence for item: {item}") 
         sequence: Sequence = self.sequence()
+        logger.debug(f"Sequence is: {sequence}. Adding canvases to sequence.") 
         for page in item.pages:
+            logger.debug(f"Adding canvas to sequence: {page}.") 
             sequence.add_canvas(self.get_or_create_canvas(page))
-
+            
+        logger.debug(f"Final sequence created: {sequence}") 
         return sequence
 
     def create_range(self, item: Union[Article, Collection]):
+        logger.debug(f"Creating range for item: {item}") 
         if isinstance(item, Collection):
             return list(chain(*[self.create_range(article) for article in item.articles]))
 
         range: Range = self.range(ident=item.bibcode, label=item.bibcode)
         for page in item.pages:
+            logger.debug(f"Adding canvas to range: {page}.") 
             range.add_canvas(self.get_or_create_canvas(page))
-
+        logger.debug(f"Range created: {[range]}") 
         return [range]
 
     def get_canvas_dict(self) -> Dict[str, Canvas]:
@@ -44,6 +52,7 @@ class ManifestFactoryExtended(ManifestFactory):
         return self.canvas_dict
 
     def get_or_create_canvas(self, page: Page):
+        logger.debug(f"Getting or creating canvas for page: {page}") 
         canvas_dict = self.get_canvas_dict()
         if(page.id in canvas_dict.keys()):
             return canvas_dict[page.id]
@@ -61,24 +70,29 @@ class ManifestFactoryExtended(ManifestFactory):
         annotation.on = canvas.id
         canvas.add_annotation(annotation)
         canvas_dict[page.id] = canvas
+
+        logger.debug(f"Canvas created: {canvas}") 
         return canvas
 
     def create_image_annotation(self, page: Page):
+        logger.debug(f"Creating image annotation for page: {page}") 
         annotation: Annotation = self.annotation(ident=str(page.id))
         image: Image = annotation.image(
             ident=page.image_path, label=f'p. {page.label}', iiif=True)
 
         # Override default image quality and format set by prezi
         image.id = image.id.replace(f'/default.jpg', f'/{page.image_color_quality}.tif')
-
+        logger.debug(f"Image id: {image.id}") 
         image.format = page.format
         image.height = page.height
         image.width = page.width
-
+        logger.debug(f"Image annotation created: {annotation}") 
         return annotation
 
     def add_search_service(self, manifest: Manifest, search_url: str):
+        logger.debug(f"Adding search services for manifest {manifest} and search url {search_url}") 
         context = 'http://iiif.io/api/search/1/context.json'
         profile = 'http://iiif.io/api/search/1/search'
         
         manifest.add_service(ident=search_url, context=context, profile=profile)
+        logger.debug(f"Adding search services for manifest {manifest} and search url {search_url}") 
