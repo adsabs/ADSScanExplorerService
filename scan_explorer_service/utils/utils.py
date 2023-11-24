@@ -1,12 +1,16 @@
 
 from flask import current_app, url_for
+from scan_explorer_service.views.view_utils import logger
+
 
 def url_for_proxy(endpoint: str, **values):
     values['_external'] = False
 
     server, prefix = proxy_url()
+    logger.debug(f"Server is {server} and prefix is {prefix}.") 
     path = url_for(endpoint, **values).lstrip('/')
 
+    logger.debug(f"Url is {server}/{prefix}/{path}.") 
     return f'{server}/{prefix}/{path}'
 
 def proxy_url():
