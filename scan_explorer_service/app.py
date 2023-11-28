@@ -13,7 +13,7 @@ def register_extensions(app: ADSFlask):
     #compress.init_app(app)
     limiter.init_app(app)
     discoverer.init_app(app)
-    appmap_flask.init_app(app)
+    # appmap_flask.init_app(app)
     
     manifest_factory.set_iiif_image_info(2.0, 2)  # Version, ComplianceLevel
 

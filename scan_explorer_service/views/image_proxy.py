@@ -10,7 +10,6 @@ import requests
 from scan_explorer_service.models import Collection, Page, Article
 from scan_explorer_service.utils.db_utils import item_thumbnail
 from scan_explorer_service.utils.utils import url_for_proxy
-import logging
 
 
 bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
@@ -20,7 +19,7 @@ bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
 @bp_proxy.route('/iiif/2/<path:path>', methods=['GET'])
 def image_proxy(path):
     """Proxy in between the image server and the user"""
-    logging.debug('######## Starting image proxy ########')
+    current_app.logger.debug('######## Starting image proxy ########')
     req_url = urlparse.urljoin(f'{current_app.config.get("IMAGE_API_BASE_URL")}/', path)
     req_headers = {key: value for (key, value) in request.headers if key != 'Host' and key != 'Accept'}
 
@@ -29,7 +28,7 @@ def image_proxy(path):
 
     r = requests.request(request.method, req_url, params=request.args, stream=True,
                          headers=req_headers, allow_redirects=False, data=request.form)
-    logging.debug('Response = {r}')
+    current_app.logger.debug('Response = {r}')
 
     excluded_headers = ['content-encoding','content-length', 'transfer-encoding', 'connection']
     headers = [(name, value) for (name, value) in r.headers.items() if name.lower() not in excluded_headers]
@@ -38,7 +37,7 @@ def image_proxy(path):
     def generate():
         for chunk in r.raw.stream(decode_content=False):
             yield chunk
-    logging.debug('######## Ending image proxy ########')
+    current_app.logger.debug('######## Ending image proxy ########')
     return Response(generate(), status=r.status_code, headers=headers)
 
 
@@ -47,23 +46,23 @@ def image_proxy(path):
 def image_proxy_thumbnail():
     """Helper to generate the correct url for a thumbnail given an ID and type"""
 
-    logging.debug('######## Starting image/thumbnail ########')
+    current_app.logger.debug('######## Starting image/thumbnail ########')
     try:
         id = request.args.get('id')
         type = request.args.get('type')
-        logging.debug(f"Id {id}, Type {type}")
+        current_app.logger.debug(f"Id {id}, Type {type}")
         with current_app.session_scope() as session:
             thumbnail_path = item_thumbnail(session, id, type)
-            logging.debug(f"Thumbnail path {thumbnail_path}")
+            current_app.logger.debug(f"Thumbnail path {thumbnail_path}")
             path = urlparse.urlparse(thumbnail_path).path
             
             remove = urlparse.urlparse(url_for_proxy('proxy.image_proxy', path='')).path
             path = path.replace(remove, '')
-            logging.debug(f"Path {path}")
-            logging.debug('######## Finishing image/thumbnail ########')
+            current_app.logger.debug(f"Path {path}")
+            current_app.logger.debug('######## Finishing image/thumbnail ########')
             return image_proxy(path)
     except Exception as e:
-        logging.error(f'{e}')
+        current_app.logger.error(f'{e}')
         return jsonify(Message=str(e)), 400
 
 @advertise(scopes=['api'], rate_limit=[5000, 3600*24])
