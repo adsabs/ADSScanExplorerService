@@ -7,7 +7,6 @@ from scan_explorer_service.utils.search_utils import *
 from scan_explorer_service.views.view_utils import ApiErrors
 from scan_explorer_service.open_search import EsFields, page_os_search, aggregate_search, page_ocr_os_search
 import requests
-import logging 
 
 bp_metadata = Blueprint('metadata', __name__, url_prefix='/metadata')
 
@@ -17,29 +16,29 @@ bp_metadata = Blueprint('metadata', __name__, url_prefix='/metadata')
 def article_extra(bibcode: str):
     """Route that fetches additional metadata about an article from the ADS search service """
 
-    logging.debug(f"######## Starting /article/extra endpoint. ######")
+    current_app.logger.debug(f"######## Starting /article/extra endpoint. ######")
 
     auth_token = current_app.config.get('ADS_SEARCH_SERVICE_TOKEN')
     ads_search_service = current_app.config.get('ADS_SEARCH_SERVICE_URL')
     
     if auth_token and ads_search_service:
-        logging.debug(f"Auth token {auth_token[::3]} and ads service {ads_search_service} fetched.")
+        current_app.logger.debug(f"Auth token {auth_token[::3]} and ads service {ads_search_service} fetched.")
         try:
             params = {'q': f'bibcode:{bibcode}', 'fl':'title,author'}   
             headers = {'Authorization': f'Bearer {auth_token}'}
             response = requests.get(ads_search_service, params, headers=headers).json()
-            logging.debug(f"Response {response}")
+            current_app.logger.debug(f"Response {response}")
             docs = response.get('response').get('docs')
-            logging.debug(f"Docs {docs}")
+            current_app.logger.debug(f"Docs {docs}")
 
             if docs:
-                logging.debug(f"Successful! Doc {docs[0]}")
+                current_app.logger.debug(f"Successful! Doc {docs[0]}")
                 return docs[0]
         except:
-            logging.debug(f"Failed to retrieve external ADS article metadata")
+            current_app.logger.debug(f"Failed to retrieve external ADS article metadata")
             return jsonify(message='Failed to retrieve external ADS article metadata'), 500
         
-    logging.debug(f"######## Ending /article/extra endpoint. ######")
+    current_app.logger.debug(f"######## Ending /article/extra endpoint. ######")
         
     return {}
 
@@ -136,12 +135,12 @@ def put_page():
 def article_search():
     """Search for an article using one or some of the available keywords"""
 
-    logging.debug(f"######## Starting /article/search endpoint. ######")
+    current_app.logger.debug(f"######## Starting /article/search endpoint. ######")
     try:
         qs, qs_dict, page, limit, sort = parse_query_args(request.args)
-        logging.debug(f"qs={qs}, qs_dict={qs_dict}, page={page}, limit={limit}, sort={sort}")
+        current_app.logger.debug(f"qs={qs}, qs_dict={qs_dict}, page={page}, limit={limit}, sort={sort}")
         result = aggregate_search(qs, EsFields.article_id, page, limit, sort)
-        logging.debug(f"result = {result}")
+        current_app.logger.debug(f"result = {result}")
         text_query = ''
         if SearchOptions.FullText.value in qs_dict.keys():
             text_query = qs_dict[SearchOptions.FullText.value]
@@ -151,11 +150,11 @@ def article_search():
         if article_count == 0:
             collection_count = aggregate_search(qs, EsFields.volume_id, page, limit, sort)['aggregations']['total_count']['value']
             page_count = page_os_search(qs, page, limit, sort)['hits']['total']['value']
-        logging.debug(f"result={result}, page={page}, limit={limit}, text_query={text_query}, collection_count={collection_count}, page_count={page_count}")
-        logging.debug(f"######## Ending /article/search endpoint. ######")
+        current_app.logger.debug(f"result={result}, page={page}, limit={limit}, text_query={text_query}, collection_count={collection_count}, page_count={page_count}")
+        current_app.logger.debug(f"######## Ending /article/search endpoint. ######")
         return jsonify(serialize_os_article_result(result, page, limit, text_query, collection_count, page_count))
     except Exception as e:
-        logging.error(f"{e}")
+        current_app.logger.error(f"{e}")
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
 
 
