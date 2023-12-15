@@ -10,6 +10,7 @@ import requests
 from scan_explorer_service.models import Collection, Page, Article
 from scan_explorer_service.utils.db_utils import item_thumbnail
 from scan_explorer_service.utils.utils import url_for_proxy
+import time 
 
 
 bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
@@ -19,7 +20,7 @@ bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
 @bp_proxy.route('/iiif/2/<path:path>', methods=['GET'])
 def image_proxy(path):
     """Proxy in between the image server and the user"""
-    current_app.logger.debug('######## Starting image proxy ########')
+    current_app.logger.debug('######## Starting image proxy for image {} ########'.format(path))
     req_url = urlparse.urljoin(f'{current_app.config.get("IMAGE_API_BASE_URL")}/', path)
     req_headers = {key: value for (key, value) in request.headers if key != 'Host' and key != 'Accept'}
 
@@ -28,7 +29,7 @@ def image_proxy(path):
 
     r = requests.request(request.method, req_url, params=request.args, stream=True,
                          headers=req_headers, allow_redirects=False, data=request.form)
-    current_app.logger.debug('Response = {r}')
+    current_app.logger.debug('Response = {r.text}')
 
     excluded_headers = ['content-encoding','content-length', 'transfer-encoding', 'connection']
     headers = [(name, value) for (name, value) in r.headers.items() if name.lower() not in excluded_headers]
@@ -37,7 +38,7 @@ def image_proxy(path):
     def generate():
         for chunk in r.raw.stream(decode_content=False):
             yield chunk
-    current_app.logger.debug('######## Ending image proxy ########')
+    current_app.logger.debug('######## Ending image proxy for image {path} ########')
     return Response(generate(), status=r.status_code, headers=headers)
 
 
@@ -69,6 +70,7 @@ def image_proxy_thumbnail():
 @bp_proxy.route('/pdf', methods=['GET'])
 def pdf_save():
     """Generate a PDF from pages"""
+    current_app.logger.debug('######## Starting PDF generation process ########')
     try:
         id = request.args.get('id')
         page_start = request.args.get('page_start', 1, int)
@@ -87,19 +89,28 @@ def pdf_save():
                 item: Union[Article, Collection] = (
                             session.query(Article).filter(Article.id == id).one_or_none()
                             or session.query(Collection).filter(Collection.id == id).one_or_none())
-
+                current_app.logger.debug('######## Fetching article/collection {item} from the database ########')
+                fetch_start_time = time.time()
                 if isinstance(item, Article):
                     q = session.query(Article).filter(Article.id == item.id).one_or_none()
                     start_page = q.pages.first().volume_running_page_num
                     query = session.query(Page).filter(Page.articles.any(Article.id == item.id), 
                         Page.volume_running_page_num  >= page_start + start_page - 1, 
-                        Page.volume_running_page_num  <= page_end + start_page - 1).order_by(Page.volume_running_page_num)
+                        Page.volume_running_page_num  <= page_end + start_page - 1).order_by(Page.volume_running_page_num).limit(page_limit)
                 elif isinstance(item, Collection):
                     query = session.query(Page).filter(Page.collection_id == item.id, 
                         Page.volume_running_page_num >= page_start, 
-                        Page.volume_running_page_num <= page_end).order_by(Page.volume_running_page_num)
+                        Page.volume_running_page_num <= page_end).order_by(Page.volume_running_page_num).limit(page_limit)
                 else:
                     raise Exception("ID: " + id + " not found")
+                fetch_end_time = time.time()
+                fetch_time_elapsed = fetch_end_time - fetch_start_time
+                current_app.logger.debug(f'Fetching article/collection {item} took {fetch_time_elapsed:.2f} seconds to complete.')
+
+
+
+                current_app.logger.debug('######## Fetching images  ########')
+                fetch_images_start_time = time.time()
                 for page in query.all():
                     n_pages += 1
                     if n_pages > page_limit:
@@ -115,8 +126,18 @@ def pdf_save():
                     path = path.replace(remove, '')
                     im_data = image_proxy(path).get_data()
                     memory_sum += sys.getsizeof(im_data)
+                    current_app.logger.debug(f'Page {n_pages}. Image data: {im_data}')
                     yield im_data
+                fetch_images_end_time = time.time()
+                fetch_images_time_elapsed = fetch_images_end_time - fetch_images_start_time
+                current_app.logger.debug(f'Fetching images for pages took {fetch_images_time_elapsed:.2f} seconds to complete.')
 
-        return Response(img2pdf.convert([im for im in loop_images(id, page_start, page_end)]), mimetype='application/pdf')
+        current_app.logger.debug('######## Starting image loop ########')
+        loop_start_time = time.time() 
+        response = Response(img2pdf.convert([im for im in loop_images(id, page_start, page_end)]), mimetype='application/pdf')
+        loop_end_time = time.time() 
+        loop_total_time = loop_end_time - loop_start_time
+        current_app.logger.debug(f'Image loop took {loop_total_time:.2f} seconds to complete.')
+        return response
     except Exception as e:
         return jsonify(Message=str(e)), 400
