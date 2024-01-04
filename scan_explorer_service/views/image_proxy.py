@@ -12,7 +12,7 @@ from scan_explorer_service.utils.utils import url_for_proxy
 import io
 import cProfile
 import pstats
-from pprint import pprint
+
 
 bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
 
@@ -21,7 +21,6 @@ bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
 @bp_proxy.route('/iiif/2/<path:path>', methods=['GET'])
 def image_proxy(path):
     """Proxy in between the image server and the user"""
-    current_app.logger.debug(f'######## Starting image proxy for image {path} ########')
     req_url = urlparse.urljoin(f'{current_app.config.get("IMAGE_API_BASE_URL")}/', path)
     req_headers = {key: value for (key, value) in request.headers if key != 'Host' and key != 'Accept'}
 
@@ -30,7 +29,6 @@ def image_proxy(path):
 
     r = requests.request(request.method, req_url, params=request.args, stream=True,
                          headers=req_headers, allow_redirects=False, data=request.form)
-    current_app.logger.debug(f'Response = {r.json}')
 
     excluded_headers = ['content-encoding','content-length', 'transfer-encoding', 'connection']
     headers = [(name, value) for (name, value) in r.headers.items() if name.lower() not in excluded_headers]
