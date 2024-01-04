@@ -37,7 +37,6 @@ def image_proxy(path):
     def generate():
         for chunk in r.raw.stream(decode_content=False):
             yield chunk
-    current_app.logger.debug(f'######## Ending image proxy for image {path} ########')
     return Response(generate(), status=r.status_code, headers=headers)
 
 
@@ -48,15 +47,12 @@ def image_proxy_thumbnail():
     try:
         id = request.args.get('id')
         type = request.args.get('type')
-        current_app.logger.debug(f"Id {id}, Type {type}")
         with current_app.session_scope() as session:
             thumbnail_path = item_thumbnail(session, id, type)
-            current_app.logger.debug(f"Thumbnail path {thumbnail_path}")
             path = urlparse.urlparse(thumbnail_path).path
             
             remove = urlparse.urlparse(url_for_proxy('proxy.image_proxy', path='')).path
             path = path.replace(remove, '')
-            current_app.logger.debug(f"Image thumbnail path {path}")
             
             return image_proxy(path)
     except Exception as e:
@@ -88,7 +84,6 @@ def pdf_save():
                 item: Union[Article, Collection] = (
                             session.query(Article).filter(Article.id == id).one_or_none()
                             or session.query(Collection).filter(Collection.id == id).one_or_none())
-                current_app.logger.debug(f'######## Fetching article/collection {item} from the database ########')
                 if isinstance(item, Article):
                     q = session.query(Article).filter(Article.id == item.id).one_or_none()
                     start_page = q.pages.first().volume_running_page_num
@@ -117,7 +112,6 @@ def pdf_save():
                     path = path.replace(remove, '')
                     im_data = image_proxy(path).get_data()
                     memory_sum += sys.getsizeof(im_data)
-                    current_app.logger.debug(f'Page {n_pages}. Image data: {im_data}')
                     yield im_data
                 
                 
