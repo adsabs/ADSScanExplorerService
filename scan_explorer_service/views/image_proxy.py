@@ -112,14 +112,13 @@ def pdf_save():
                     path = path.replace(remove, '')
                     im_data = image_proxy(path).get_data()
                     memory_sum += sys.getsizeof(im_data)
-                    im_data_type = type(im_data)
-                    current_app.logger.debug(f'image data: {im_data}, image_data_type: {im_data_type}')
                     yield im_data
                 
                 
         profiler = cProfile.Profile()
         profiler.enable()
         images = [im for im in loop_images(id, page_start, page_end)]
+        current_app.logger.debug(f'image data: {images}')
         response = Response(img2pdf.convert([images]), mimetype='application/pdf')  
         profiler.disable()      
 
