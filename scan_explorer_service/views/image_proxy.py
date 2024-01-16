@@ -78,7 +78,7 @@ def pdf_save():
 
         @stream_with_context
         def loop_images(id, page_start, page_end):
-            n_pages = 0
+            # n_pages = 0
             memory_sum = 0
             with current_app.session_scope() as session:
                 item: Union[Article, Collection] = (
@@ -98,9 +98,9 @@ def pdf_save():
                     raise Exception("ID: " + id + " not found")
                 
                 for page in query.all():
-                    n_pages += 1
-                    if n_pages > page_limit:
-                        break
+                #     n_pages += 1
+                #     if n_pages > page_limit:
+                #         break
                     if memory_sum > memory_limit:
                         break
                     size = 'full'
@@ -112,12 +112,15 @@ def pdf_save():
                     path = path.replace(remove, '')
                     im_data = image_proxy(path).get_data()
                     memory_sum += sys.getsizeof(im_data)
+                    im_data_type = type(im_data)
+                    current_app.logger.debug(f'image data: {im_data}, image_data_type: {im_data_type}')
                     yield im_data
                 
                 
         profiler = cProfile.Profile()
         profiler.enable()
-        response = Response(img2pdf.convert([im for im in loop_images(id, page_start, page_end)]), mimetype='application/pdf')  
+        images = [im for im in loop_images(id, page_start, page_end)]
+        response = Response(img2pdf.convert([images]), mimetype='application/pdf')  
         profiler.disable()      
 
         # Log the profiling information
