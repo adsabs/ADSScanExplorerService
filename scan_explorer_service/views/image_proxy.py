@@ -111,15 +111,14 @@ def pdf_save():
                     remove = urlparse.urlparse(url_for_proxy('proxy.image_proxy', path='')).path
                     path = path.replace(remove, '')
                     im_data = image_proxy(path).get_data()
+                    current_app.logger.debug(f'image data: {im_data}, data type: {type(im_data)}')
                     memory_sum += sys.getsizeof(im_data)
                     yield im_data
                 
                 
         profiler = cProfile.Profile()
         profiler.enable()
-        images = [im for im in loop_images(id, page_start, page_end)]
-        current_app.logger.debug(f'image data: {images}')
-        response = Response(img2pdf.convert([images]), mimetype='application/pdf')  
+        response = Response(img2pdf.convert([im for im in loop_images(id, page_start, page_end)]), mimetype='application/pdf')  
         profiler.disable()      
 
         # Log the profiling information
