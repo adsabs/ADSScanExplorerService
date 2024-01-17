@@ -78,7 +78,7 @@ def pdf_save():
 
         @stream_with_context
         def loop_images(id, page_start, page_end):
-            # n_pages = 0
+            n_pages = 0
             memory_sum = 0
             with current_app.session_scope() as session:
                 item: Union[Article, Collection] = (
@@ -98,10 +98,11 @@ def pdf_save():
                     raise Exception("ID: " + id + " not found")
                 
                 for page in query.all():
-                #     n_pages += 1
-                #     if n_pages > page_limit:
-                #         break
+                    n_pages += 1
+                    if n_pages > page_limit:
+                        break
                     if memory_sum > memory_limit:
+                        current_app.logger.debug(f"Memory limit reached: {memory_sum} > {memory_limit}") 
                         break
                     size = 'full'
                     if dpi != 600:
@@ -111,7 +112,8 @@ def pdf_save():
                     remove = urlparse.urlparse(url_for_proxy('proxy.image_proxy', path='')).path
                     path = path.replace(remove, '')
                     im_data = image_proxy(path).get_data()
-                    current_app.logger.debug(f'image data: {im_data}, data type: {type(im_data)}')
+                    type_im_data = type(im_data)
+                    current_app.logger.debug(f"Image data: {im_data}, Image data type: {type_im_data}") 
                     memory_sum += sys.getsizeof(im_data)
                     yield im_data
                 
