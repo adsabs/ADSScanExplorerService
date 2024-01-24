@@ -12,6 +12,7 @@ from scan_explorer_service.utils.utils import url_for_proxy
 import io
 import cProfile
 import pstats
+import fitz
 
 
 bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
@@ -29,6 +30,8 @@ def image_proxy(path):
 
     r = requests.request(request.method, req_url, params=request.args, stream=True,
                          headers=req_headers, allow_redirects=False, data=request.form)
+    
+
 
     excluded_headers = ['content-encoding','content-length', 'transfer-encoding', 'connection']
     headers = [(name, value) for (name, value) in r.headers.items() if name.lower() not in excluded_headers]
@@ -65,6 +68,9 @@ def pdf_save():
     """Generate a PDF from pages"""
     
     try:
+        profiler = cProfile.Profile()
+        profiler.enable()
+
         id = request.args.get('id')
         page_start = request.args.get('page_start', 1, int)
         page_end = request.args.get('page_end', math.inf, int)
@@ -80,7 +86,10 @@ def pdf_save():
         def loop_images(id, page_start, page_end):
             n_pages = 0
             memory_sum = 0
+            current_app.logger.debug("Starting...") 
+            pdf_document = fitz.open()
             with current_app.session_scope() as session:
+                current_app.logger.debug(f'Fetching items')
                 item: Union[Article, Collection] = (
                             session.query(Article).filter(Article.id == id).one_or_none()
                             or session.query(Collection).filter(Collection.id == id).one_or_none())
@@ -98,7 +107,11 @@ def pdf_save():
                     raise Exception("ID: " + id + " not found")
                 
                 for page in query.all():
+                   
                     n_pages += 1
+                    
+                    current_app.logger.debug(f"Generating image for page: {n_pages}") 
+                    current_app.logger.debug(f'Id: {page.id}, Volume_page: {page.volume_running_page_num}, memory: {memory_sum}')
                     if n_pages > page_limit:
                         break
                     if memory_sum > memory_limit:
@@ -111,18 +124,31 @@ def pdf_save():
                     path = urlparse.urlparse(image_url).path
                     remove = urlparse.urlparse(url_for_proxy('proxy.image_proxy', path='')).path
                     path = path.replace(remove, '')
-                    im_data = image_proxy(path).get_data()
-                    type_im_data = type(im_data)
-                    current_app.logger.debug(f"Image data: {im_data}, Image data type: {type_im_data}") 
-                    memory_sum += sys.getsizeof(im_data)
-                    yield im_data
-                
-                
-        profiler = cProfile.Profile()
-        profiler.enable()
-        response = Response(img2pdf.convert([im for im in loop_images(id, page_start, page_end)]), mimetype='application/pdf')  
-        profiler.disable()      
+                    current_app.logger.debug(f"Getting image data...: {n_pages}") 
 
+                    im_data = image_proxy(path).get_data()
+                    
+                    pixmap = fitz.Pixmap(im_data)
+                    current_app.logger.debug(f"Created pixmap: {pixmap}") 
+                    current_app.logger.debug(f"Inserting pixmap into pdf_document: {pixmap}") 
+
+                    pdf_document.insert_file(pixmap)                    
+            
+                    memory_sum += sys.getsizeof(im_data)
+
+                current_app.logger.debug("Turning pdf to bytes format...") 
+                pdf_data = pdf_document.tobytes()
+                current_app.logger.debug("Closing PDF.") 
+                pdf_document.close()
+                
+                return Response(pdf_data, mimetype="application/pdf")
+                
+        
+       
+        response = loop_images(id, page_start, page_end) 
+        # response = Response(img2pdf.convert([im for im in loop_images(id, page_start, page_end)]), mimetype='application/pdf')  
+        profiler.disable()      
+        
         # Log the profiling information
         log_buffer = io.StringIO()
         profiler_stats = pstats.Stats(profiler, stream=log_buffer)
@@ -134,6 +160,9 @@ def pdf_save():
         current_app.logger.debug(f'==================Profiling information========================: \n')
         for line in formatted_stats:
             current_app.logger.debug(line)
+
+
+
         return response
     except Exception as e:
         return jsonify(Message=str(e)), 400

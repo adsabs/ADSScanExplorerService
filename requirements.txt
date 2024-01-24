@@ -13,3 +13,5 @@ setuptools<58
 alembic==1.8.0
 img2pdf==0.4.4
 appmap>=1.1.0.dev0
+PyMuPDF==1.23.15
+PyMuPDFb==1.23.9
