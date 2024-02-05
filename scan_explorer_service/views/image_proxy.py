@@ -87,7 +87,6 @@ def pdf_save():
             n_pages = 0
             memory_sum = 0
             current_app.logger.debug("Starting...") 
-            pdf_document = fitz.open()
             with current_app.session_scope() as session:
                 current_app.logger.debug(f'Fetching items')
                 item: Union[Article, Collection] = (
@@ -125,29 +124,12 @@ def pdf_save():
                     remove = urlparse.urlparse(url_for_proxy('proxy.image_proxy', path='')).path
                     path = path.replace(remove, '')
                     current_app.logger.debug(f"Getting image data...: {n_pages}") 
-
                     im_data = image_proxy(path).get_data()
-                    
-                    pixmap = fitz.Pixmap(im_data)
-                    current_app.logger.debug(f"Created pixmap: {pixmap}") 
-                    current_app.logger.debug(f"Inserting pixmap into pdf_document: {pixmap}") 
-
-                    pdf_document.insert_file(pixmap)                    
-            
-                    memory_sum += sys.getsizeof(im_data)
-
-                current_app.logger.debug("Turning pdf to bytes format...") 
-                pdf_data = pdf_document.tobytes()
-                current_app.logger.debug("Closing PDF.") 
-                pdf_document.close()
-                
-                return Response(pdf_data, mimetype="application/pdf")
-                
+                    yield im_data
         
        
-        response = loop_images(id, page_start, page_end) 
-        # response = Response(img2pdf.convert([im for im in loop_images(id, page_start, page_end)]), mimetype='application/pdf')  
-        profiler.disable()      
+        response = Response(img2pdf.convert([im for im in loop_images(id, page_start, page_end)]), mimetype='application/pdf')  
+        profiler.disable()
         
         # Log the profiling information
         log_buffer = io.StringIO()
@@ -160,8 +142,6 @@ def pdf_save():
         current_app.logger.debug(f'==================Profiling information========================: \n')
         for line in formatted_stats:
             current_app.logger.debug(line)
-
-
 
         return response
     except Exception as e:
