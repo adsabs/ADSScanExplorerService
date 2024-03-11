@@ -32,7 +32,13 @@ def image_proxy(path):
     data = request.form
 
 
-    current_app.logger.debug(f'Request method: {request_method}, Request url: {req_url}, Params: {params}, Headers: {req_headers}, Data: {json.dumps(data, indent=4)}')
+    current_app.logger.debug('---------------')
+    current_app.logger.debug(f'Request method: {request_method}')
+    current_app.logger.debug(f'Request url: {req_url}')
+    current_app.logger.debug(f'Request headers: {req_headers}')
+    current_app.logger.debug(f'Params: {params}')
+    current_app.logger.debug(f'Data: {json.dumps(data, indent=4)}')
+    current_app.logger.debug('---------------')
 
     r = requests.request(request.method, req_url, params=request.args, stream=True,
                          headers=req_headers, allow_redirects=False, data=request.form)
