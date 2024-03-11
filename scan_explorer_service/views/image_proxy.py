@@ -13,7 +13,7 @@ import io
 import cProfile
 import pstats
 import fitz
-
+import json
 
 bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
 
@@ -27,6 +27,12 @@ def image_proxy(path):
 
     req_headers['X-Forwarded-Host'] = current_app.config.get('PROXY_SERVER')
     req_headers['X-Forwarded-Path'] = current_app.config.get('PROXY_PREFIX').rstrip('/') + '/image'
+    request_method = request.method
+    params = request.args
+    data = request.form
+
+
+    current_app.logger.debug(f'Request method: {request_method}, Request url: {req_url}, Params: {params}, Headers: {req_headers}, Data: {json.dumps(data, indent=4)}')
 
     r = requests.request(request.method, req_url, params=request.args, stream=True,
                          headers=req_headers, allow_redirects=False, data=request.form)
