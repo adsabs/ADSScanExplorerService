@@ -95,7 +95,7 @@ def pdf_save():
         current_app.logger.debug(f'Memory limit: {memory_limit}')
 
         @stream_with_context
-        def loop_images(id, page_start, page_end):
+        def loop_pdfs(id, page_start, page_end):
             n_pages = 0
             memory_sum = 0
             current_app.logger.debug("Starting...") 
@@ -131,7 +131,7 @@ def pdf_save():
                     size = 'full'
                     if dpi != 600:
                         size = str(int(page.width*scaling))+ ","
-                    image_url = page.image_url + "/full/" + size + f"/0/{page.image_color_quality}.tif"
+                    image_url = page.image_url + "/full/" + size + f"/0/{page.image_color_quality}.pdf"
                     path = urlparse.urlparse(image_url).path
                     remove = urlparse.urlparse(url_for_proxy('proxy.image_proxy', path='')).path
                     path = path.replace(remove, '')
@@ -139,8 +139,18 @@ def pdf_save():
                     im_data = image_proxy(path).get_data()
                     yield im_data
         
+        merged_pdf = fitz.open()
+        for pdf_bytes in loop_pdfs(id, page_start, page_end):
+            pdf_doc = fitz.open(stream=pdf_bytes)  # Use stream parameter directly
+            merged_pdf.insert_pdf(pdf_doc)
+
+        output_pdf = io.BytesIO()
+        merged_pdf.save(output_pdf, garbage=4, deflate=True)
+        output_pdf.seek(0)  
        
-        response = Response(img2pdf.convert([im for im in loop_images(id, page_start, page_end)]), mimetype='application/pdf')  
+        response = Response(output_pdf.getvalue(), mimetype='application/pdf')
+        response.headers['Content-Disposition'] = f'attachment; filename="{id}.pdf"'
+        # response = Response(fitz.merge_pdf([im for im in loop_pdfs(id, page_start, page_end)]), mimetype='application/pdf')  
         profiler.disable()
         
         # Log the profiling information
