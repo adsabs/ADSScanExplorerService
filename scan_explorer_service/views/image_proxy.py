@@ -142,41 +142,40 @@ def pdf_save():
         
         merged_pdf = fitz.open()
 
-        for pdf_bytes in loop_pdfs(id, page_start, page_end):
-            current_app.logger.debug(type(pdf_bytes))
+        try:
+            # Merging PDFs and inserting them into the merged_pdf object
+            for pdf_bytes in loop_pdfs(id, page_start, page_end):
+                pdf_doc = fitz.open(stream=pdf_bytes)
+                merged_pdf.insert_pdf(pdf_doc)
+            current_app.logger.debug("Merged PDF inserted successfully.")
+        except Exception as e:
+            current_app.logger.error(f"An error occurred while merging pdfs: {e}")
 
-        # try:
-        #     # Merging PDFs and inserting them into the merged_pdf object
-        #     for pdf_bytes in loop_pdfs(id, page_start, page_end):
-        #         pdf_doc = fitz.open(stream=pdf_bytes)
-        #         merged_pdf.insert_pdf(pdf_doc)
-        #         current_app.logger.debug("Merged PDF inserted successfully.")
-        # except Exception as e:
-        #     current_app.logger.error(f"An error occurred while merging PDFs: {e}")
-
-        # # Saving the merged PDF to a BytesIO object
-        # output_pdf = io.BytesIO()
-
-        # try:
-        #     merged_pdf.save(output_pdf, garbage=4, deflate=True)
-        #     current_app.logger.debug("Merged PDF saved to BytesIO successfully.")
             
-        #     # Log information about the output PDF file
-        #     output_pdf_size = len(output_pdf.getvalue())
-        #     current_app.logger.debug(f"Size of merged PDF (Bytes): {output_pdf_size}")
-        #     current_app.logger.debug(f"Number of pages in merged PDF: {merged_pdf.page_count}")
-        # except Exception as e:
-        #     current_app.logger.error(f"An error occurred while saving merged PDF to BytesIO: {e}")
+        # Saving the merged PDF to a BytesIO object
+        output_pdf = io.BytesIO()
 
-        # # Creating the Flask response with the merged PDF data and setting headers
-        # response = Response(output_pdf.getvalue(), mimetype='application/pdf')
-        # response.headers['Content-Disposition'] = f'attachment; filename="{id}.pdf"'
-        # current_app.logger.debug("Flask response created successfully.")
+        try:
+            merged_pdf.save(output_pdf, garbage=4, deflate=True)
+            current_app.logger.debug("Merged PDF saved to BytesIO successfully.")
+            
+            # Log information about the output PDF file
+            output_pdf_size = len(output_pdf.getvalue())
+            current_app.logger.debug(f"Size of merged PDF (Bytes): {output_pdf_size}")
+            current_app.logger.debug(f"Number of pages in merged PDF: {merged_pdf.page_count}")
+        except Exception as e:
+            current_app.logger.error(f"An error occurred while saving merged PDF to BytesIO: {e}")
 
-        # # Log information about the response
-        # response_size = len(response.data)
-        # current_app.logger.debug(f"Size of response (Bytes): {response_size}")
-        # # response = Response(fitz.merge_pdf([im for im in loop_pdfs(id, page_start, page_end)]), mimetype='application/pdf')  
+
+        # Creating the Flask response with the merged PDF data and setting headers
+        response = Response(output_pdf.getvalue(), mimetype='application/pdf')
+        response.headers['Content-Disposition'] = f'attachment; filename="{id}.pdf"'
+        current_app.logger.debug("Flask response created successfully.")
+
+        # Log information about the response
+        response_size = len(response.data)
+        current_app.logger.debug(f"Size of response (Bytes): {response_size}")
+        # response = Response(img2pdf.convert([im for im in loop_pdfs(id, page_start, page_end)]), mimetype='application/pdf')  
         profiler.disable()
         
         # Log the profiling information
@@ -191,6 +190,6 @@ def pdf_save():
         for line in formatted_stats:
             current_app.logger.debug(line)
 
-        # return response
+        return response
     except Exception as e:
         return jsonify(Message=str(e)), 400
