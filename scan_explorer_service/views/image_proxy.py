@@ -89,7 +89,7 @@ def pdf_save():
         current_app.logger.debug(f'Memory limit: {memory_limit}')
 
         @stream_with_context
-        def loop_pdfs(id, page_start, page_end):
+        def loop_images(id, page_start, page_end):
             n_pages = 0
             memory_sum = 0
             current_app.logger.debug("Starting...") 
@@ -125,7 +125,7 @@ def pdf_save():
                     size = 'full'
                     if dpi != 600:
                         size = str(int(page.width*scaling))+ ","
-                    image_url = page.image_url + "/full/" + size + f"/0/{page.image_color_quality}.pdf"
+                    image_url = page.image_url + "/full/" + size + f"/0/{page.image_color_quality}.tif"
                     path = urlparse.urlparse(image_url).path
                     remove = urlparse.urlparse(url_for_proxy('proxy.image_proxy', path='')).path
                     path = path.replace(remove, '')
@@ -134,42 +134,8 @@ def pdf_save():
                     current_app.logger.debug(f"Getting image data...: {im_data}") 
                     yield im_data
         
-        merged_pdf = fitz.open()
-
-        try:
-            # Merging PDFs and inserting them into the merged_pdf object
-            for pdf_bytes in loop_pdfs(id, page_start, page_end):
-                pdf_doc = fitz.open(stream=pdf_bytes)
-                merged_pdf.insert_pdf(pdf_doc)
-            current_app.logger.debug("Merged PDF inserted successfully.")
-        except Exception as e:
-            current_app.logger.error(f"An error occurred while merging pdfs: {e}")
-
-            
-        # Saving the merged PDF to a BytesIO object
-        output_pdf = io.BytesIO()
-
-        try:
-            merged_pdf.save(output_pdf, garbage=4, deflate=True)
-            current_app.logger.debug("Merged PDF saved to BytesIO successfully.")
-            
-            # Log information about the output PDF file
-            output_pdf_size = len(output_pdf.getvalue())
-            current_app.logger.debug(f"Size of merged PDF (Bytes): {output_pdf_size}")
-            current_app.logger.debug(f"Number of pages in merged PDF: {merged_pdf.page_count}")
-        except Exception as e:
-            current_app.logger.error(f"An error occurred while saving merged PDF to BytesIO: {e}")
-
-
-        # Creating the Flask response with the merged PDF data and setting headers
-        response = Response(output_pdf.getvalue(), mimetype='application/pdf')
-        response.headers['Content-Disposition'] = f'attachment; filename="{id}.pdf"'
-        current_app.logger.debug("Flask response created successfully.")
-
-        # Log information about the response
-        response_size = len(response.data)
-        current_app.logger.debug(f"Size of response (Bytes): {response_size}")
-        # response = Response(img2pdf.convert([im for im in loop_pdfs(id, page_start, page_end)]), mimetype='application/pdf')  
+       
+        response = Response(img2pdf.convert([im for im in loop_images(id, page_start, page_end)]), mimetype='application/pdf')  
         profiler.disable()
         
         # Log the profiling information
