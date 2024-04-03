@@ -96,7 +96,7 @@ def pdf_save():
         page_start = request.args.get('page_start', 1, int)
         page_end = request.args.get('page_end', math.inf, int)
         dpi = request.args.get('dpi', 600, int)
-        dpi = min(dpi,600)
+        dpi = min(dpi, 600)
         scaling = float(dpi)/ 600
         memory_limit = current_app.config.get("IMAGE_PDF_MEMORY_LIMIT")
         page_limit = current_app.config.get("IMAGE_PDF_PAGE_LIMIT")
@@ -151,7 +151,7 @@ def pdf_save():
                     response.headers['Content-Disposition'] = f'attachment; filename="{object_name}"'
 
                 except Exception as e: 
-                    current_app.logger.debug(f"Error retrieving PDF from S3 for {object_name}: {e}")
+                    current_app.logger.debug(f"Error retrieving PDF from S3 for {object_name}: {e}. Using Cantaloupe")
                     response = Response(img2pdf.convert([im for im in loop_images(session, item, page_start, page_end, page_limit)]), mimetype='application/pdf') 
             else: 
                 current_app.logger.info(f"Attempting to fetch PDF using cantaloupe: {item.id}")
