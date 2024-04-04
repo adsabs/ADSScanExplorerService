@@ -142,7 +142,7 @@ def pdf_save():
             if isinstance(item, Article): 
                 current_app.logger.info(f"Item is an article: {item.id}")
                 object_name = f'{item.id}.pdf'
-                full_path = f'pdf/{object_name}'
+                full_path = f'pdfs/{object_name}'
                 try: 
                     current_app.logger.info(f"Attempting to fetch PDF: {object_name}")
                     file_content = S3Provider(current_app.config).read_object_s3(full_path)
