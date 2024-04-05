@@ -146,6 +146,7 @@ def pdf_save():
                 try: 
                     current_app.logger.info(f"Attempting to fetch PDF: {object_name}")
                     file_content = S3Provider(current_app.config).read_object_s3(full_path)
+                    current_app.logger.info(f"Full path: {current_app.config.AWS_BUCKET_NAME}/{full_path}")
                     current_app.logger.info(f"Successfully fetched PDF from S3 bucket without cantaloupe: {object_name}")
                     response = Response(file_content, mimetype='application/pdf')
                     response.headers['Content-Disposition'] = f'attachment; filename="{object_name}"'
