@@ -35,9 +35,9 @@ class S3Provider:
                 self.bucket.download_fileobj(object_name, s3_obj)
                 s3_obj.seek(0)
                 s3_file = s3_obj.read()
+                return s3_file
         except (ClientError, ParamValidationError) as e:
-            logging.exception(e)
             raise e
-        return s3_file
+        
     
   
