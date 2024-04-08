@@ -13,6 +13,7 @@ from scan_explorer_service.utils.utils import url_for_proxy
 import io
 import cProfile
 import pstats
+import traceback
 
 bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
 
@@ -143,16 +144,18 @@ def pdf_save():
                 current_app.logger.info(f"Item is an article: {item.id}")
                 object_name = f'{item.id}.pdf'
                 full_path = f'pdfs/{object_name}'
+                current_app.logger.debug(f"Stack trace: {traceback.format_exc()}")
                 try: 
                     current_app.logger.info(f"Attempting to fetch PDF: {object_name}")
-                    current_app.logger.info(f"Full path: {current_app.config.AWS_BUCKET_NAME}/{full_path}")
+                    current_app.logger.debug(f"Bucket: {current_app.config['AWS_BUCKET_NAME']}, Object Key: {full_path}")
                     file_content = S3Provider(current_app.config).read_object_s3(full_path)
                     current_app.logger.info(f"Successfully fetched PDF from S3 bucket without cantaloupe: {object_name}")
                     response = Response(file_content, mimetype='application/pdf')
                     response.headers['Content-Disposition'] = f'attachment; filename="{object_name}"'
 
-                except Exception as e: 
-                    current_app.logger.debug(f"Error retrieving PDF from S3 for {object_name}: {e}. Using Cantaloupe")
+                except Exception as fallback_error: 
+                    current_app.logger.error(f"Failed to generate PDF using fallback method for {object_name}: {str(fallback_error)}")
+                    current_app.logger.debug(f"Fallback method stack trace: {traceback.format_exc()}")
                     response = Response(img2pdf.convert([im for im in loop_images(session, item, page_start, page_end, page_limit)]), mimetype='application/pdf') 
             else: 
                 current_app.logger.info(f"Attempting to fetch PDF using cantaloupe: {item.id}")
