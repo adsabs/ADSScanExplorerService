@@ -142,7 +142,7 @@ def pdf_save():
            
             if isinstance(item, Article): 
                 current_app.logger.info(f"Item is an article: {item.id}")
-                object_name = f'{item.id}.pdf'
+                object_name = f'{item.id}.pdf'.lower()
                 full_path = f'pdfs/{object_name}'
                 current_app.logger.debug(f"Stack trace: {traceback.format_exc()}")
                 try: 
