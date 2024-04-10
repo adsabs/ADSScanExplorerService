@@ -16,29 +16,22 @@ bp_metadata = Blueprint('metadata', __name__, url_prefix='/metadata')
 def article_extra(bibcode: str):
     """Route that fetches additional metadata about an article from the ADS search service """
 
-    # current_app.logger.debug(f"######## Starting /article/extra endpoint. ######")
 
     auth_token = current_app.config.get('ADS_SEARCH_SERVICE_TOKEN')
     ads_search_service = current_app.config.get('ADS_SEARCH_SERVICE_URL')
     
     if auth_token and ads_search_service:
-        current_app.logger.debug(f"Auth token {auth_token[::3]} and ads service {ads_search_service} fetched.")
         try:
             params = {'q': f'bibcode:{bibcode}', 'fl':'title,author'}   
             headers = {'Authorization': f'Bearer {auth_token}'}
             response = requests.get(ads_search_service, params, headers=headers).json()
-            # current_app.logger.debug(f"Response {response}")
             docs = response.get('response').get('docs')
-            # current_app.logger.debug(f"Docs {docs}")
 
             if docs:
-                # current_app.logger.debug(f"Successful! Doc {docs[0]}")
                 return docs[0]
         except:
-            # current_app.logger.debug(f"Failed to retrieve external ADS article metadata")
             return jsonify(message='Failed to retrieve external ADS article metadata'), 500
         
-    # current_app.logger.debug(f"######## Ending /article/extra endpoint. ######")
         
     return {}
 
@@ -134,13 +127,9 @@ def put_page():
 @bp_metadata.route('/article/search', methods=['GET'])
 def article_search():
     """Search for an article using one or some of the available keywords"""
-
-    # current_app.logger.debug(f"######## Starting /article/search endpoint. ######")
     try:
         qs, qs_dict, page, limit, sort = parse_query_args(request.args)
-        # current_app.logger.debug(f"qs={qs}, qs_dict={qs_dict}, page={page}, limit={limit}, sort={sort}")
         result = aggregate_search(qs, EsFields.article_id, page, limit, sort)
-        # current_app.logger.debug(f"result = {result}")
         text_query = ''
         if SearchOptions.FullText.value in qs_dict.keys():
             text_query = qs_dict[SearchOptions.FullText.value]
@@ -150,11 +139,9 @@ def article_search():
         if article_count == 0:
             collection_count = aggregate_search(qs, EsFields.volume_id, page, limit, sort)['aggregations']['total_count']['value']
             page_count = page_os_search(qs, page, limit, sort)['hits']['total']['value']
-        # current_app.logger.debug(f"result={result}, page={page}, limit={limit}, text_query={text_query}, collection_count={collection_count}, page_count={page_count}")
-        # current_app.logger.debug(f"######## Ending /article/search endpoint. ######")
         return jsonify(serialize_os_article_result(result, page, limit, text_query, collection_count, page_count))
     except Exception as e:
-        # current_app.logger.error(f"{e}")
+        current_app.logger.error(f"{e}")
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
 
 

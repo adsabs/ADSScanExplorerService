@@ -4,19 +4,13 @@ from flask_discoverer import advertise
 from urllib import parse as urlparse
 import img2pdf
 import math
-import sys
 import requests
 from scan_explorer_service.models import Collection, Page, Article
 from scan_explorer_service.utils.db_utils import item_thumbnail
 from scan_explorer_service.utils.s3_utils import S3Provider
 from scan_explorer_service.utils.utils import url_for_proxy
-import io
-import cProfile
-import pstats
-import traceback
 
 bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
-
 
 
 @advertise(scopes=['api'], rate_limit=[5000, 3600*24])
@@ -29,11 +23,11 @@ def image_proxy(path):
     req_headers['X-Forwarded-Host'] = current_app.config.get('PROXY_SERVER')
     req_headers['X-Forwarded-Path'] = current_app.config.get('PROXY_PREFIX').rstrip('/') + '/image'
     request_method = request.method
-    params = request.args
+    
 
-    current_app.logger.debug(f'Request method: {request_method}, Request url: {req_url}, Params: {params}, Headers: {req_headers}')
+    current_app.logger.info(f'Request method: {request_method}')
 
-    r = requests.request(request.method, req_url, params=request.args, stream=True,
+    r = requests.request(request_method, req_url, params=request.args, stream=True,
                          headers=req_headers, allow_redirects=False, data=request.form)
 
     excluded_headers = ['content-encoding','content-length', 'transfer-encoding', 'connection']
@@ -62,7 +56,7 @@ def image_proxy_thumbnail():
             
             return image_proxy(path)
     except Exception as e:
-        current_app.logger.error(f'{e}')
+        current_app.logger.info(f'{e}')
         return jsonify(Message=str(e)), 400
     
 def get_item(session, id): 
@@ -87,6 +81,46 @@ def get_pages(item, session, page_start, page_end, page_limit):
             Page.volume_running_page_num <= page_end).order_by(Page.volume_running_page_num).limit(page_limit)
     return query 
 
+
+@stream_with_context
+def fetch_images(session, item, page_start, page_end, page_limit, scaling, dpi, memory_limit):
+        n_pages = 0
+        memory_sum = 0
+        query = get_pages(item, session, page_start, page_end, page_limit)
+        
+        for page in query.all():
+            
+            n_pages += 1
+            
+            current_app.logger.info(f"Generating image for page: {n_pages}") 
+            current_app.logger.info(f'Id: {page.id}, Volume_page: {page.volume_running_page_num}, memory: {memory_sum}')
+            if n_pages > page_limit:
+                break
+            if memory_sum > memory_limit:
+                current_app.logger.error(f"Memory limit reached: {memory_sum} > {memory_limit}") 
+                break
+            size = 'full'
+            if dpi != 600:
+                size = str(int(page.width*scaling))+ ","
+            image_url = page.image_url + "/full/" + size + f"/0/{page.image_color_quality}.tif"
+            path = urlparse.urlparse(image_url).path
+            remove = urlparse.urlparse(url_for_proxy('proxy.image_proxy', path='')).path
+            path = path.replace(remove, '')
+            current_app.logger.info(f"Getting image data...: {n_pages}") 
+            im_data = image_proxy(path).get_data()
+            current_app.logger.info(f"Getting image data...: {im_data}") 
+            yield im_data
+
+def fetch_pdf(object_name):
+
+    full_path = f'pdfs/{object_name}'
+    file_content = S3Provider(current_app.config).read_object_s3(full_path)
+    current_app.logger.info(f"Successfully fetched PDF from S3 bucket: {object_name}")
+    response = Response(file_content, mimetype='application/pdf')
+    response.headers['Content-Disposition'] = f'attachment; filename="{object_name}"'
+
+    return response
+
 @advertise(scopes=['api'], rate_limit=[5000, 3600*24])
 @bp_proxy.route('/pdf', methods=['GET'])
 def pdf_save():
@@ -102,78 +136,26 @@ def pdf_save():
         memory_limit = current_app.config.get("IMAGE_PDF_MEMORY_LIMIT")
         page_limit = current_app.config.get("IMAGE_PDF_PAGE_LIMIT")
         
-        current_app.logger.debug(f'Memory limit: {memory_limit}')
+        current_app.logger.info(f'Memory limit: {memory_limit}')
 
-        @stream_with_context
-        def loop_images(session, item, page_start, page_end, page_limit):
-            n_pages = 0
-            memory_sum = 0
-            query = get_pages(item, session, page_start, page_end, page_limit)
-            
-            for page in query.all():
-                
-                n_pages += 1
-                
-                current_app.logger.debug(f"Generating image for page: {n_pages}") 
-                current_app.logger.debug(f'Id: {page.id}, Volume_page: {page.volume_running_page_num}, memory: {memory_sum}')
-                if n_pages > page_limit:
-                    break
-                if memory_sum > memory_limit:
-                    current_app.logger.debug(f"Memory limit reached: {memory_sum} > {memory_limit}") 
-                    break
-                size = 'full'
-                if dpi != 600:
-                    size = str(int(page.width*scaling))+ ","
-                image_url = page.image_url + "/full/" + size + f"/0/{page.image_color_quality}.tif"
-                path = urlparse.urlparse(image_url).path
-                remove = urlparse.urlparse(url_for_proxy('proxy.image_proxy', path='')).path
-                path = path.replace(remove, '')
-                current_app.logger.debug(f"Getting image data...: {n_pages}") 
-                im_data = image_proxy(path).get_data()
-                current_app.logger.debug(f"Getting image data...: {im_data}") 
-                yield im_data
-        
         with current_app.session_scope() as session:
-            profiler = cProfile.Profile()
-            profiler.enable()
 
             item = get_item(session, id) 
-            current_app.logger.debug(f"Item retrieved successfully: {item.id}")
+            current_app.logger.info(f"Item retrieved successfully: {item.id}")
            
             if isinstance(item, Article): 
                 current_app.logger.info(f"Item is an article: {item.id}")
                 object_name = f'{item.id}.pdf'.lower()
-                full_path = f'pdfs/{object_name}'
-                current_app.logger.debug(f"Stack trace: {traceback.format_exc()}")
                 try: 
-                    current_app.logger.info(f"Attempting to fetch PDF: {object_name}")
-                    current_app.logger.debug(f"Bucket: {current_app.config['AWS_BUCKET_NAME']}, Object Key: {full_path}")
-                    file_content = S3Provider(current_app.config).read_object_s3(full_path)
-                    current_app.logger.info(f"Successfully fetched PDF from S3 bucket without cantaloupe: {object_name}")
-                    response = Response(file_content, mimetype='application/pdf')
-                    response.headers['Content-Disposition'] = f'attachment; filename="{object_name}"'
-
-                except Exception as fallback_error: 
-                    current_app.logger.error(f"Failed to generate PDF using fallback method for {object_name}: {str(fallback_error)}")
-                    current_app.logger.debug(f"Fallback method stack trace: {traceback.format_exc()}")
-                    response = Response(img2pdf.convert([im for im in loop_images(session, item, page_start, page_end, page_limit)]), mimetype='application/pdf') 
+                    response = fetch_pdf(object_name)
+                except Exception as e: 
+                    current_app.logger.info(f"Failed to get PDF using fallback method for {object_name}: {str(e)}")
+                    response = Response(img2pdf.convert([im for im in fetch_images(session, item, page_start, page_end, page_limit, scaling, dpi, memory_limit)]), mimetype='application/pdf') 
             else: 
                 current_app.logger.info(f"Attempting to fetch PDF using cantaloupe: {item.id}")
-                response = Response(img2pdf.convert([im for im in loop_images(session, item, page_start, page_end, page_limit)]), mimetype='application/pdf') 
+                response = Response(img2pdf.convert([im for im in fetch_images(session, item, page_start, page_end, page_limit, scaling, dpi, memory_limit)]), mimetype='application/pdf') 
             
-            profiler.disable()
-            
-            # Log the profiling information
-            log_buffer = io.StringIO()
-            profiler_stats = pstats.Stats(profiler, stream=log_buffer)
-            profiler_stats.strip_dirs().sort_stats('cumulative', 'calls').print_stats(20)
-            
-            formatted_stats = log_buffer.getvalue().splitlines()
-            
-            current_app.logger.debug(f'==================Profiling information========================: \n')
-            for line in formatted_stats:
-                current_app.logger.debug(line)
-
+          
             return response
     except Exception as e:
         return jsonify(Message=str(e)), 400

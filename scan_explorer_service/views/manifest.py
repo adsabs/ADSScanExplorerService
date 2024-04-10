@@ -26,25 +26,20 @@ def before_request():
 def get_manifest(id: str):
     """ Creates an IIIF manifest from an article or Collection"""
 
-    # current_app.logger.debug(f"Fetching manifest for item with id : {id}") 
+    current_app.logger.info(f"Fetching manifest for item with id : {id}") 
     with current_app.session_scope() as session:
-        # current_app.logger.debug(f"Fetching item (Article/Collection).") 
         item: Union[Article, Collection] = (
             session.query(Article).filter(Article.id == id).one_or_none()
             or session.query(Collection).filter(Collection.id == id).one_or_none())
 
         if item:
-            # current_app.logger.debug(f"Item successfully fetched. Creating manifest for item: {item}") 
             manifest = manifest_factory.create_manifest(item)
-            # current_app.logger.debug(f"Getting url for proxy for endpoint manifest.search and id {id}") 
             search_url = url_for_proxy('manifest.search', id=id)
-            # current_app.logger.debug(f"Getting url for proxy for endpoint manifest.search and id {id}")  
             manifest_factory.add_search_service(manifest, search_url)
-            # current_app.logger.debug(f"Manifest generated successfully for ID: {id}")
+            current_app.logger.info(f"Manifest generated successfully for ID: {id}")
 
             return manifest.toJSON(top=True)
         else:
-            # current_app.logger.debug(f"Item not found for article with id: {id}") 
             return jsonify(exception='Article not found'), 404
 
 

@@ -1,9 +1,8 @@
 import unittest
-from flask_testing import TestCase
 from flask import url_for
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from scan_explorer_service.tests.base import TestCaseDatabase
-from scan_explorer_service.views.image_proxy import image_proxy, image_proxy_thumbnail
+from scan_explorer_service.views.image_proxy import image_proxy, get_item
 from scan_explorer_service.models import Article, Base, Collection, Page
 
 
@@ -117,6 +116,44 @@ class TestProxy(TestCaseDatabase):
         assert(response.is_streamed)
         assert(response.status_code == 200)
 
+    def test_get_item(self):
+        """Test retrieving an item by its ID"""
+        with self.app.app_context():
+            article = get_item(self.app.db.session, self.article.id)
+            assert(isinstance(article, Article))
+
+            collection = get_item(self.app.db.session, self.collection.id)
+            assert(isinstance(collection, Collection))
+
+            with self.assertRaises(Exception) as context:
+                get_item(self.app.db.session, 'non-existent-id')
+            assert("ID: non-existent-id not found" in str(context.exception))
+
+    @patch('scan_explorer_service.views.image_proxy.image_proxy')
+    @patch('scan_explorer_service.utils.s3_utils.S3Provider.read_object_s3')
+    def test_pdf_save_success(self, mock_read_object_s3, mock_image_proxy):
+
+        mock_read_object_s3.return_value = b'%PDF-1.4'
+        
+        mock_image_proxy_response = MagicMock()
+        mock_image_proxy_response.status_code = 200
+        mock_image_proxy_response.headers = {'Content-Type': 'application/pdf'}
+        mock_image_proxy_response.get_data.return_value = b'%PDF-1.4'
+        mock_image_proxy.return_value = mock_image_proxy_response
+
+        data = {
+            'id': self.article.id,  
+            'page_start': 1,
+            'page_end': 100,
+            'dpi': 300
+        }
+        
+        response = self.client.get(url_for('proxy.pdf_save', **data))
+        
+        
+        assert(response.status_code == 200)
+        assert('application/pdf' == response.content_type)
+        assert(b'%PDF-1.4' in response.data)
 
 if __name__ == '__main__':
     unittest.main()
