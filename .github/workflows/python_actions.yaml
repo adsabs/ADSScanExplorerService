@@ -1,0 +1,49 @@
+name: GitHub Actions CI
+
+on: [pull_request]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    env:
+      PGDATABASE: scan_explorer_service
+      PGPASSWORD: scan_explorer
+      PGUSER: scan_explorer
+      PGHOST: localhost
+      PGPORT: 5432
+
+    services:
+      postgres:
+        image: postgres:14.2
+        env:
+          POSTGRES_DB: scan_explorer_service
+          POSTGRES_PASSWORD: scan_explorer
+          POSTGRES_USER: scan_explorer
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+
+        ports:
+          - 5432:5432
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        pip install --upgrade  pip
+        pip install setuptools==57.5.0
+        pip install -r requirements.txt
+        pip install -r dev-requirements.txt
+        
+    - name: Run unittests
+      run: |
+         py.test
