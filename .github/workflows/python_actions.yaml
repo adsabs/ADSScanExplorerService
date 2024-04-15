@@ -42,8 +42,8 @@ jobs:
         pip --version 
         pip install --upgrade pip
         pip install setuptools<57
-        pip install -r requirements.txt --no-cache-dir 
-        pip install -r dev-requirements.txt --no-cache-dir 
+        pip install -r requirements.txt
+        pip install -r dev-requirements.txt
         
     - name: Run unittests
       run: |
