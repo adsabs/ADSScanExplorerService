@@ -41,6 +41,7 @@ jobs:
       run: |
         pip install --upgrade  pip
         pip install setuptools==57.5.0
+        pip install psycopg2 -I --no-cache-dir 
         pip install -r requirements.txt
         pip install -r dev-requirements.txt
         
