@@ -7,7 +7,7 @@ Jinja2==2.11.3
 MarkupSafe==2.0.1
 itsdangerous==2.0.1
 Werkzeug==2.0.3
-# psycopg2-binary==2.9.3
+psycopg2-binary==2.9.3
 opensearch-py==2.0.0
 setuptools<58
 alembic==1.8.0
