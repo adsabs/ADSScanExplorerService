@@ -39,8 +39,12 @@ jobs:
 
     - name: Install dependencies
       run: |
+        pip3 --version
+        pip --version 
         pip install --upgrade pip
+        echo "Upgraded pip to $(pip --version)"
         pip install setuptools<57
+        echo "Setuptools version: $(pip show setuptools | grep Version)"
         pip install -r requirements.txt --no-cache-dir 
         pip install -r dev-requirements.txt --no-cache-dir 
         
