@@ -40,9 +40,9 @@ jobs:
     - name: Install dependencies
       run: |
         pip install --upgrade  pip
-        pip install setuptools<57
-        pip install -r requirements.txt 
-        pip install -r dev-requirements.txt 
+        pip install setuptools<57 --no-cache-dir  
+        pip install -r requirements.txt --no-cache-dir 
+        pip install -r dev-requirements.txt --no-cache-dir 
         
     - name: Run unittests
       run: |
