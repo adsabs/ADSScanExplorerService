@@ -103,10 +103,13 @@ def fetch_images(session, item, page_start, page_end, page_limit, scaling, dpi, 
             if dpi != 600:
                 size = str(int(page.width*scaling))+ ","
             image_url = page.image_url + "/full/" + size + f"/0/{page.image_color_quality}.tif"
+            current_app.logger.info(f"image url: {page.image_url}") 
             path = urlparse.urlparse(image_url).path
+            current_app.logger.info(f"path: {path}") 
             remove = urlparse.urlparse(url_for_proxy('proxy.image_proxy', path='')).path
+            current_app.logger.info(f"remove: {remove}") 
             path = path.replace(remove, '')
-            current_app.logger.info(f"Getting image data...: {n_pages}") 
+            current_app.logger.info(f"modified path: {path}") 
             im_data = image_proxy(path).get_data()
             current_app.logger.info(f"Getting image data...: {im_data}") 
             yield im_data
