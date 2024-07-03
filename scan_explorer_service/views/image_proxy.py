@@ -79,11 +79,12 @@ def get_pages(item, session, page_start, page_end, page_limit):
         query = session.query(Page).filter(Page.collection_id == item.id, 
             Page.volume_running_page_num >= page_start, 
             Page.volume_running_page_num <= page_end).order_by(Page.volume_running_page_num).limit(page_limit)
+    current_app.logger.info(f"Got pages {page_start}-{page_end}: {query}") 
     return query 
 
 
 @stream_with_context
-def fetch_images(session, item, page_start, page_end, page_limit, scaling, dpi, memory_limit):
+def fetch_images(session, item, page_start, page_end, page_limit, memory_limit):
         n_pages = 0
         memory_sum = 0
         query = get_pages(item, session, page_start, page_end, page_limit)
@@ -92,38 +93,71 @@ def fetch_images(session, item, page_start, page_end, page_limit, scaling, dpi, 
             
             n_pages += 1
             
-            current_app.logger.info(f"Generating image for page: {n_pages}") 
+            current_app.logger.info(f"Getting image for page: {n_pages}") 
             current_app.logger.info(f'Id: {page.id}, Volume_page: {page.volume_running_page_num}, memory: {memory_sum}')
             if n_pages > page_limit:
                 break
             if memory_sum > memory_limit:
                 current_app.logger.error(f"Memory limit reached: {memory_sum} > {memory_limit}") 
                 break
-            size = 'full'
-            if dpi != 600:
-                size = str(int(page.width*scaling))+ ","
-            image_url = page.image_url + "/full/" + size + f"/0/{page.image_color_quality}.tif"
-            current_app.logger.info(f"image url: {page.image_url}") 
-            path = urlparse.urlparse(image_url).path
-            current_app.logger.info(f"path: {path}") 
-            remove = urlparse.urlparse(url_for_proxy('proxy.image_proxy', path='')).path
-            current_app.logger.info(f"remove: {remove}") 
-            path = path.replace(remove, '')
-            current_app.logger.info(f"modified path: {path}") 
-            im_data = image_proxy(path).get_data()
-            current_app.logger.info(f"Getting image data...: {im_data}") 
+            
+         
+            object_name = page.image_path
+            current_app.logger.info(f"Image path: {object_name}")
+            im_data = fetch_image(object_name)
+            current_app.logger.info(f"File content: {im_data}")
             yield im_data
+
+
+# @stream_with_context
+# def fetch_images(session, item, page_start, page_end, page_limit, scaling, dpi, memory_limit):
+#         n_pages = 0
+#         memory_sum = 0
+#         query = get_pages(item, session, page_start, page_end, page_limit)
+        
+#         for page in query.all():
+            
+#             n_pages += 1
+            
+#             current_app.logger.info(f"Generating image for page: {n_pages}") 
+#             current_app.logger.info(f'Id: {page.id}, Volume_page: {page.volume_running_page_num}, memory: {memory_sum}')
+#             if n_pages > page_limit:
+#                 break
+#             if memory_sum > memory_limit:
+#                 current_app.logger.error(f"Memory limit reached: {memory_sum} > {memory_limit}") 
+#                 break
+#             size = 'full'
+#             if dpi != 600:
+#                 size = str(int(page.width*scaling))+ ","
+#             image_url = page.image_url + "/full/" + size + f"/0/{page.image_color_quality}.tif" 
+#             current_app.logger.info(f"image url: {page.image_url}") # https://dev.adsabs.harvard.edu:443/v1/scan/image/iiif/2/bitmaps-~seri-~ApJ__-~0333-~600-~0000001%2C014
+#             path = urlparse.urlparse(image_url).path 
+#             current_app.logger.info(f"path: {path}") # /v1/scan/image/iiif/2/bitmaps-~seri-~ApJ__-~0333-~600-~0000001%2C014/full/full/0/bitonal.tif
+#             remove = urlparse.urlparse(url_for_proxy('proxy.image_proxy', path='')).path
+#             current_app.logger.info(f"remove: {remove}") # /v1/scan/image/iiif/2/
+#             path = path.replace(remove, '')
+#             current_app.logger.info(f"modified path: {path}") # bitmaps-~seri-~ApJ__-~0333-~600-~0000001%2C014/full/full/0/bitonal.tif
+#             im_data = image_proxy(path).get_data()
+#             current_app.logger.info(f"Getting image data...: {im_data}") 
+#             yield im_data
 
 def fetch_pdf(object_name):
 
     full_path = f'pdfs/{object_name}'
-    file_content = S3Provider(current_app.config).read_object_s3(full_path)
-    current_app.logger.info(f"Successfully fetched PDF from S3 bucket: {object_name}")
+    file_content = S3Provider(current_app.config, 'AWS_BUCKET_NAME').read_object_s3(full_path)
+    current_app.logger.info(f"Successfully fetched file from S3 bucket: {object_name}")
     response = Response(file_content, mimetype='application/pdf')
     response.headers['Content-Disposition'] = f'attachment; filename="{object_name}"'
 
     return response
 
+
+def fetch_image(object_name):
+    file_content = S3Provider(current_app.config, 'AWS_BUCKET_NAME').read_object_s3(object_name)
+    current_app.logger.info(f"Successfully fetched image from S3 bucket: {object_name}")
+    return file_content
+   
+    
 @advertise(scopes=['api'], rate_limit=[5000, 3600*24])
 @bp_proxy.route('/pdf', methods=['GET'])
 def pdf_save():
@@ -146,17 +180,21 @@ def pdf_save():
             item = get_item(session, id) 
             current_app.logger.info(f"Item retrieved successfully: {item.id}")
            
-            if isinstance(item, Article): 
-                current_app.logger.info(f"Item is an article: {item.id}")
-                object_name = f'{item.id}.pdf'.lower()
-                try: 
-                    response = fetch_pdf(object_name)
-                except Exception as e: 
-                    current_app.logger.info(f"Failed to get PDF using fallback method for {object_name}: {str(e)}")
-                    response = Response(img2pdf.convert([im for im in fetch_images(session, item, page_start, page_end, page_limit, scaling, dpi, memory_limit)]), mimetype='application/pdf') 
-            else: 
-                current_app.logger.info(f"Attempting to fetch PDF using cantaloupe: {item.id}")
-                response = Response(img2pdf.convert([im for im in fetch_images(session, item, page_start, page_end, page_limit, scaling, dpi, memory_limit)]), mimetype='application/pdf') 
+            # returns a list of images 
+            response = Response(img2pdf.convert([im for im in fetch_images(session, item, page_start, page_end, page_limit, memory_limit)]), mimetype='application/pdf') 
+
+            current_app.logger.info(response)
+            # if isinstance(item, Article): 
+            #     current_app.logger.info(f"Item is an article: {item.id}")
+            #     object_name = f'{item.id}.pdf'.lower()
+            #     try: 
+            #         response = fetch_pdf(object_name)
+            #     except Exception as e: 
+            #         current_app.logger.info(f"Failed to get PDF using fallback method for {object_name}: {str(e)}")
+            #         response = Response(img2pdf.convert([im for im in fetch_images(session, item, page_start, page_end, page_limit, scaling, dpi, memory_limit)]), mimetype='application/pdf') 
+            # else: 
+            #     current_app.logger.info(f"Attempting to fetch PDF using cantaloupe: {item.id}")
+            #     response = Response(img2pdf.convert([im for im in fetch_images(session, item, page_start, page_end, page_limit, scaling, dpi, memory_limit)]), mimetype='application/pdf') 
             
           
             return response

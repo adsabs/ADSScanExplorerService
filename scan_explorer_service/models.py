@@ -151,20 +151,25 @@ class Page(Base, Timestamp):
     @property
     def image_url(self):
         image_api_url = url_for_proxy('proxy.image_proxy', path=self.image_path)
+        current_app.logger.debug(f'Image url {image_api_url}')
         return image_api_url
 
     @property
     def image_path(self):
-        separator = current_app.config.get('IMAGE_API_SLASH_SUB', '%2F')
+        # separator = current_app.config.get('IMAGE_API_SLASH_SUB', '%2F')
+        separator = "/" # 'bitmaps-~type-~journal-~volume-~600' -> bitmaps/type/journal/volume/600'
         image_path = f'bitmaps{separator}{self.collection.type}{separator}{self.collection.journal}{separator}{self.collection.volume}{separator}600'
-        image_path = image_path.replace('.', '_')
-        image_path += f'{separator}{self.name}'
-        if self.color_type != PageColor.BW:
-            image_path += '.tif'
-        return image_path
+        image_path = image_path.replace('.', '_') # What exactly does this do? ApJ.. to ApJ__ maybe? 
+        image_path += f'{separator}{self.name}' # 'bitmaps-~type-~journal-~volume-~600-~page' 
+        current_app.logger.debug(f'Image path {image_path}')
+        # if self.color_type != PageColor.BW:
+        #     image_path += '.tif'
+        return image_path # 'bitmaps-~type-~journal-~volume-~600-~page.tif' -> 'bitmaps/type/journal/volume/600/page'
+
 
     @property
     def thumbnail_url(self):
+        current_app.logger.debug(f'Thumbnail url {self.image_url}')
         return f'{self.image_url}/square/480,480/0/{self.image_color_quality}.jpg'
 
     @property

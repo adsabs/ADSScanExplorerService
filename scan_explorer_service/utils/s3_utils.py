@@ -9,7 +9,7 @@ class S3Provider:
     Class for interacting with a particular S3 provider
     """
 
-    def __init__(self, config):
+    def __init__(self, config, bucket_name):
         """
         input:
 
@@ -17,7 +17,7 @@ class S3Provider:
         """
         
         self.s3 = boto3.resource("s3")
-        self.bucket = self.s3.Bucket(config.get("AWS_BUCKET_NAME"))
+        self.bucket = self.s3.Bucket(config.get(bucket_name))
 
 
     def write_object_s3(self, file_bytes, object_name):
@@ -37,6 +37,7 @@ class S3Provider:
                 s3_file = s3_obj.read()
                 return s3_file
         except (ClientError, ParamValidationError) as e:
+            logging.exception(e)
             raise e
         
     
