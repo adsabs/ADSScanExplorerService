@@ -4,6 +4,8 @@ from unittest.mock import MagicMock, patch
 from scan_explorer_service.tests.base import TestCaseDatabase
 from scan_explorer_service.views.image_proxy import image_proxy, get_item
 from scan_explorer_service.models import Article, Base, Collection, Page
+from scan_explorer_service.views.image_proxy import get_pages, fetch_images, fetch_image, fetch_pdf
+from scan_explorer_service.utils.s3_utils import S3Provider 
 
 
 class TestProxy(TestCaseDatabase):
@@ -52,7 +54,17 @@ class TestProxy(TestCaseDatabase):
         self.app.db.session.commit()
         self.app.db.session.refresh(self.page)
 
+        self.page1 = Page(name='page1', collection_id=self.collection.id)
+        self.page1.width = 1000
+        self.page1.height = 1000
+        self.page1.label = 'label'
+        self.page1.volume_running_page_num = 101
+        self.app.db.session.add(self.page1)
+        self.app.db.session.commit()
+        self.app.db.session.refresh(self.page1)
+        
         self.article.pages.append(self.page)
+        self.article.pages.append(self.page1)
         self.app.db.session.commit()
         self.app.db.session.refresh(self.article)
 
@@ -129,17 +141,55 @@ class TestProxy(TestCaseDatabase):
                 get_item(self.app.db.session, 'non-existent-id')
             assert("ID: non-existent-id not found" in str(context.exception))
 
-    @patch('scan_explorer_service.views.image_proxy.image_proxy')
-    @patch('scan_explorer_service.utils.s3_utils.S3Provider.read_object_s3')
-    def test_pdf_save_success(self, mock_read_object_s3, mock_image_proxy):
+    @patch('scan_explorer_service.views.image_proxy.fetch_image')
+    def test_fetch_images(self, mock_fetch_image):
+        mock_fetch_image.return_value = b'image_data'
+        item = self.article
+        page_start = 1
+        page_end = 2
+        page_limit = 5
+        memory_limit = 100
 
-        mock_read_object_s3.return_value = b'%PDF-1.4'
+        gen = fetch_images(self.app.db.session, item, page_start, page_end, page_limit, memory_limit)
+        images = list(gen)
+        self.assertEqual(images, [b'image_data', b'image_data'])
+        mock_fetch_image.assert_called()
+
+    @patch('scan_explorer_service.utils.s3_utils.S3Provider.read_object_s3')
+    def test_fetch_image(self, mock_read_object_s3):
+        object_name = 'bitmaps/type/journal/volume/600/page'
+        mock_read_object_s3.return_value = b'image-data'
+
+        self.app.config['AWS_BUCKET_NAME'] = 'bucket-name'
         
-        mock_image_proxy_response = MagicMock()
-        mock_image_proxy_response.status_code = 200
-        mock_image_proxy_response.headers = {'Content-Type': 'application/pdf'}
-        mock_image_proxy_response.get_data.return_value = b'%PDF-1.4'
-        mock_image_proxy.return_value = mock_image_proxy_response
+        result = fetch_image(object_name)
+        
+        mock_read_object_s3.assert_called_once_with(object_name)
+        self.assertEqual(result, b'image-data')
+
+    # @patch('scan_explorer_service.utils.s3_utils.S3Provider.read_object_s3')
+    # @patch('scan_explorer_service.views.image_proxy.current_app')
+    # def test_fetch_pdf(self, mock_current_app, mock_read_object_s3):
+    #     mock_read_object_s3.return_value = b'%PDF-1.4'
+    #     mock_current_app.config = {'AWS_BUCKET_NAME': 'test-bucket'}
+    #     mock_current_app.logger = MagicMock()
+
+    #     object_name = 'test.pdf'
+    #     response = fetch_pdf(object_name)
+
+    #     mock_read_object_s3.assert_called_once_with('pdfs/test.pdf', 'AWS_BUCKET_NAME')
+    #     self.assertEqual(response.mimetype, 'application/pdf')
+    #     self.assertEqual(response.headers['Content-Disposition'], f'attachment; filename="{object_name}"')
+    #     self.assertEqual(response.data, b'%PDF-1.4')
+
+    @patch('scan_explorer_service.views.image_proxy.fetch_image')
+    @patch('scan_explorer_service.utils.s3_utils.S3Provider.read_object_s3')
+    @patch('scan_explorer_service.views.image_proxy.img2pdf.convert')
+    def test_pdf_save_success(self, mock_img2pdf_convert, mock_read_object_s3, mock_fetch_image):
+
+        mock_read_object_s3.return_value = b'image-data'
+        mock_fetch_image.return_value = b'image-data'
+        mock_img2pdf_convert.return_value = b'%PDF-1.4'
 
         data = {
             'id': self.article.id,  
@@ -154,6 +204,10 @@ class TestProxy(TestCaseDatabase):
         assert(response.status_code == 200)
         assert('application/pdf' == response.content_type)
         assert(b'%PDF-1.4' in response.data)
+        mock_fetch_image.assert_called()
+
+
+        
 
 if __name__ == '__main__':
     unittest.main()
