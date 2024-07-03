@@ -102,7 +102,7 @@ def fetch_images(session, item, page_start, page_end, page_limit, memory_limit):
                 break
             
          
-            object_name = page.image_path
+            object_name = page.simple_image_path
             current_app.logger.info(f"Image path: {object_name}")
             im_data = fetch_image(object_name)
             current_app.logger.info(f"File content: {im_data}")

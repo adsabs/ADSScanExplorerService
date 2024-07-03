@@ -156,20 +156,28 @@ class Page(Base, Timestamp):
 
     @property
     def image_path(self):
-        # separator = current_app.config.get('IMAGE_API_SLASH_SUB', '%2F')
-        separator = "/" # 'bitmaps-~type-~journal-~volume-~600' -> bitmaps/type/journal/volume/600'
+        separator = current_app.config.get('IMAGE_API_SLASH_SUB', '%2F')
         image_path = f'bitmaps{separator}{self.collection.type}{separator}{self.collection.journal}{separator}{self.collection.volume}{separator}600'
-        image_path = image_path.replace('.', '_') # What exactly does this do? ApJ.. to ApJ__ maybe? 
-        image_path += f'{separator}{self.name}' # 'bitmaps-~type-~journal-~volume-~600-~page' 
+        image_path = image_path.replace('.', '_') 
+        image_path += f'{separator}{self.name}' 
         current_app.logger.debug(f'Image path {image_path}')
-        # if self.color_type != PageColor.BW:
-        #     image_path += '.tif'
-        return image_path # 'bitmaps-~type-~journal-~volume-~600-~page.tif' -> 'bitmaps/type/journal/volume/600/page'
-
+        if self.color_type != PageColor.BW:
+            image_path += '.tif'
+        return image_path 
+    
+    @property
+    def simple_image_path(self):
+        separator = "/" 
+        image_path = f'bitmaps{separator}{self.collection.type}{separator}{self.collection.journal}{separator}{self.collection.volume}{separator}600'
+        image_path = image_path.replace('.', '_') 
+        image_path += f'{separator}{self.name}' 
+        current_app.logger.debug(f'Image path {image_path}')
+    
+        return image_path 
+    
 
     @property
     def thumbnail_url(self):
-        current_app.logger.debug(f'Thumbnail url {self.image_url}')
         return f'{self.image_url}/square/480,480/0/{self.image_color_quality}.jpg'
 
     @property
