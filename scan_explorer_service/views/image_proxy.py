@@ -85,7 +85,7 @@ def get_pages(item, session, page_start, page_end, page_limit):
 
 
 @stream_with_context
-def fetch_images(session, item, page_start, page_end, page_limit, memory_limit):
+def fetch_images(session, item, page_start, page_end, page_limit, memory_limit, dpi):
         n_pages = 0
         memory_sum = 0
         query = get_pages(item, session, page_start, page_end, page_limit)
@@ -185,7 +185,7 @@ def pdf_save():
             current_app.logger.info(f"Item retrieved successfully: {item.id}")
            
             # returns a list of images 
-            response = Response(img2pdf.convert([im for im in fetch_images(session, item, page_start, page_end, page_limit, memory_limit)]), mimetype='application/pdf') 
+            response = Response(img2pdf.convert([im for im in fetch_images(session, item, page_start, page_end, page_limit, memory_limit, dpi)], layout_fun=img2pdf.get_fixed_dpi_layout_fun((dpi, dpi))), mimetype='application/pdf') 
 
             current_app.logger.info(response)
             profiler.disable()
