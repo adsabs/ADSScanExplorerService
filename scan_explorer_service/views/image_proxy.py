@@ -9,6 +9,7 @@ from scan_explorer_service.models import Collection, Page, Article
 from scan_explorer_service.utils.db_utils import item_thumbnail
 from scan_explorer_service.utils.s3_utils import S3Provider
 from scan_explorer_service.utils.utils import url_for_proxy
+import io, cProfile, pstats 
 
 bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
 
@@ -163,6 +164,9 @@ def fetch_image(object_name):
 def pdf_save():
     """Generate a PDF from pages"""
     
+    profiler = cProfile.Profile()
+    profiler.enable()   
+
     try:
         id = request.args.get('id')
         page_start = request.args.get('page_start', 1, int)
@@ -184,6 +188,18 @@ def pdf_save():
             response = Response(img2pdf.convert([im for im in fetch_images(session, item, page_start, page_end, page_limit, memory_limit)]), mimetype='application/pdf') 
 
             current_app.logger.info(response)
+            profiler.disable()
+            log_buffer = io.StringIO()
+            profiler_stats = pstats.Stats(profiler, stream=log_buffer)
+            profiler_stats.strip_dirs().sort_stats('cumulative', 'calls').print_stats(20)
+
+            formatted_stats = log_buffer.getvalue().splitlines()
+
+            current_app.logger.debug(f'==================Profiling information========================: \n')
+            for line in formatted_stats:
+                current_app.logger.debug(line)
+
+
             # if isinstance(item, Article): 
             #     current_app.logger.info(f"Item is an article: {item.id}")
             #     object_name = f'{item.id}.pdf'.lower()
