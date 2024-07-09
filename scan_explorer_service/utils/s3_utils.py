@@ -1,5 +1,5 @@
 import io
-import logging
+from flask import current_app
 import boto3
 from botocore.exceptions import ClientError, ParamValidationError
 
@@ -23,9 +23,9 @@ class S3Provider:
     def write_object_s3(self, file_bytes, object_name):
         try:
             response = self.bucket.put_object(Body=file_bytes, Key=object_name)
-            logging.info(response)
+            current_app.logger.info.info(response)
         except (ClientError, ParamValidationError) as e:
-            logging.exception(e)
+            current_app.logger.info.exception(e)
             raise e
         return response.e_tag
 
@@ -37,8 +37,7 @@ class S3Provider:
                 s3_file = s3_obj.read()
                 return s3_file
         except (ClientError, ParamValidationError) as e:
-            logging.exception(e)
+            current_app.logger.info.exception(e)
             raise e
-        
-    
-  
+
+

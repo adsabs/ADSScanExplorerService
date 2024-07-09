@@ -14,3 +14,4 @@ alembic==1.8.0
 img2pdf==0.4.4
 appmap>=1.1.0.dev0
 boto3==1.34.75
+pillow==10.4.0

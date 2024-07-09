@@ -6,7 +6,8 @@ from scan_explorer_service.views.image_proxy import image_proxy, get_item
 from scan_explorer_service.models import Article, Base, Collection, Page
 from scan_explorer_service.views.image_proxy import get_pages, fetch_images, fetch_image, fetch_pdf
 from scan_explorer_service.utils.s3_utils import S3Provider 
-
+from PIL import Image, ImageDraw
+import io
 
 class TestProxy(TestCaseDatabase):
 
@@ -150,7 +151,7 @@ class TestProxy(TestCaseDatabase):
         page_limit = 5
         memory_limit = 100
 
-        gen = fetch_images(self.app.db.session, item, page_start, page_end, page_limit, memory_limit)
+        gen = fetch_images(self.app.db.session, item, page_start, page_end, page_limit, memory_limit, 600)
         images = list(gen)
         self.assertEqual(images, [b'image_data', b'image_data'])
         mock_fetch_image.assert_called()
@@ -187,8 +188,17 @@ class TestProxy(TestCaseDatabase):
     @patch('scan_explorer_service.views.image_proxy.img2pdf.convert')
     def test_pdf_save_success(self, mock_img2pdf_convert, mock_read_object_s3, mock_fetch_image):
 
-        mock_read_object_s3.return_value = b'image-data'
-        mock_fetch_image.return_value = b'image-data'
+        img = Image.new('RGB', (100, 100), color='red')
+
+        draw = ImageDraw.Draw(img)
+        draw.text((10, 10), "Hello, Pillow!", fill='white')
+
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format='TIFF')
+        img_byte_arr.seek(0)  
+
+        mock_read_object_s3.return_value = img_byte_arr
+        mock_fetch_image.return_value = img_byte_arr
         mock_img2pdf_convert.return_value = b'%PDF-1.4'
 
         data = {

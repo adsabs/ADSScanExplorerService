@@ -19,26 +19,21 @@ class ManifestFactoryExtended(ManifestFactory):
         manifest.add_sequence(self.create_sequence(item))
         for range in self.create_range(item):
             manifest.add_range(range)
-        current_app.logger.info(f"Manifest created: {manifest}") 
         return manifest
 
     def create_sequence(self, item: Union[Article, Collection]):
-        current_app.logger.info(f"Creating sequence for item: {item}") 
         sequence: Sequence = self.sequence()
         for page in item.pages:
             sequence.add_canvas(self.get_or_create_canvas(page)) 
-        current_app.logger.info(f"Final sequence created: {sequence}") 
         return sequence
 
     def create_range(self, item: Union[Article, Collection]):
-        current_app.logger.info(f"Creating range for item: {item}") 
         if isinstance(item, Collection):
             return list(chain(*[self.create_range(article) for article in item.articles]))
 
         range: Range = self.range(ident=item.bibcode, label=item.bibcode)
         for page in item.pages:
             range.add_canvas(self.get_or_create_canvas(page))
-        current_app.logger.info(f"Range created: {[range]}") 
         return [range]
 
     def get_canvas_dict(self) -> Dict[str, Canvas]:
@@ -47,7 +42,6 @@ class ManifestFactoryExtended(ManifestFactory):
         return self.canvas_dict
 
     def get_or_create_canvas(self, page: Page):
-        current_app.logger.info(f"Getting or creating canvas for page: {page}") 
         canvas_dict = self.get_canvas_dict()
         if(page.id in canvas_dict.keys()):
             return canvas_dict[page.id]
@@ -66,7 +60,6 @@ class ManifestFactoryExtended(ManifestFactory):
         canvas.add_annotation(annotation)
         canvas_dict[page.id] = canvas
 
-        current_app.logger.info(f"Canvas created: {canvas}") 
         return canvas
 
     def create_image_annotation(self, page: Page):
@@ -81,7 +74,6 @@ class ManifestFactoryExtended(ManifestFactory):
         image.format = page.format
         image.height = page.height
         image.width = page.width
-        current_app.logger.info(f"Image annotation created: {annotation}") 
         return annotation
 
     def add_search_service(self, manifest: Manifest, search_url: str):
@@ -89,4 +81,3 @@ class ManifestFactoryExtended(ManifestFactory):
         profile = 'http://iiif.io/api/search/1/search'
         
         manifest.add_service(ident=search_url, context=context, profile=profile)
-        current_app.logger.info(f"Adding search services for manifest {manifest} and search url {search_url}") 

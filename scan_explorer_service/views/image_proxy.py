@@ -10,6 +10,7 @@ from scan_explorer_service.utils.db_utils import item_thumbnail
 from scan_explorer_service.utils.s3_utils import S3Provider
 from scan_explorer_service.utils.utils import url_for_proxy
 import io, cProfile, pstats 
+from PIL import Image
 
 bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
 
@@ -84,6 +85,23 @@ def get_pages(item, session, page_start, page_end, page_limit):
     return query 
 
 
+def resize_image(page_stream, scaling):
+     
+    page = Image.open(page_stream)
+
+    new_width = int(page.width * scaling)
+    new_height = int(page.height * scaling)
+    current_app.logger.debug(f"New width and height: {new_width}, {new_height}")
+
+    page_resized = page.resize((new_width, new_height), Image.LANCZOS) # TODO: try other filters for better performance 
+    
+    page_byte_arr = io.BytesIO()
+    page_resized.save(page_byte_arr, format=page.format) 
+    page_byte_arr.seek(0)
+
+    return page_byte_arr
+
+
 @stream_with_context
 def fetch_images(session, item, page_start, page_end, page_limit, memory_limit, dpi):
         n_pages = 0
@@ -107,6 +125,12 @@ def fetch_images(session, item, page_start, page_end, page_limit, memory_limit, 
             current_app.logger.info(f"Image path: {object_name}")
             im_data = fetch_image(object_name)
             current_app.logger.info(f"File content: {im_data}")
+
+            if dpi < 600:
+                current_app.logger.debug(f"Resizing page: {page.id}")
+                scaling = float(dpi)/ 600
+                im_data = resize_image(im_data, scaling)
+
             yield im_data
 
 
@@ -173,7 +197,6 @@ def pdf_save():
         page_end = request.args.get('page_end', math.inf, int)
         dpi = request.args.get('dpi', 600, int)
         dpi = min(dpi, 600)
-        scaling = float(dpi)/ 600
         memory_limit = current_app.config.get("IMAGE_PDF_MEMORY_LIMIT")
         page_limit = current_app.config.get("IMAGE_PDF_PAGE_LIMIT")
         
@@ -185,7 +208,7 @@ def pdf_save():
             current_app.logger.info(f"Item retrieved successfully: {item.id}")
            
             # returns a list of images 
-            response = Response(img2pdf.convert([im for im in fetch_images(session, item, page_start, page_end, page_limit, memory_limit, dpi)], layout_fun=img2pdf.get_fixed_dpi_layout_fun((dpi, dpi))), mimetype='application/pdf') 
+            response = Response(img2pdf.convert([im for im in fetch_images(session, item, page_start, page_end, page_limit, memory_limit, dpi)]), mimetype='application/pdf') 
 
             current_app.logger.info(response)
             profiler.disable()
