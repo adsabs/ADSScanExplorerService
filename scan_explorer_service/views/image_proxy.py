@@ -86,20 +86,31 @@ def get_pages(item, session, page_start, page_end, page_limit):
 
 
 def resize_image(page_stream, scaling):
-     
-    page = Image.open(page_stream)
+    try:    
+        current_app.logger.debug(f"Resizing: {scaling}")
+        page = Image.open(io.BytesIO(page_stream))
+        current_app.logger.debug(f"Page: {page}")
+        new_width = int(page.width * scaling)
+        new_height = int(page.height * scaling)
+        current_app.logger.debug(f"New width and height: {new_width}, {new_height}")
 
-    new_width = int(page.width * scaling)
-    new_height = int(page.height * scaling)
-    current_app.logger.debug(f"New width and height: {new_width}, {new_height}")
+        page_resized = page.resize((new_width, new_height), Image.LANCZOS) # TODO: try other filters for better performance 
+        
+        current_app.logger.debug(f"Page resized: {page_resized}")
 
-    page_resized = page.resize((new_width, new_height), Image.LANCZOS) # TODO: try other filters for better performance 
+        page_byte_arr = io.BytesIO()
+        page_resized.save(page_byte_arr, format=page.format) 
+        page_byte_arr.seek(0)
+
+        current_app.logger.debug(f"Page to byte arr: {page_byte_arr}")
+
+        return page_byte_arr
+
+    except Exception as e: 
+        current_app.logger.debug(f"Error while opening image: {e}")
+
+   
     
-    page_byte_arr = io.BytesIO()
-    page_resized.save(page_byte_arr, format=page.format) 
-    page_byte_arr.seek(0)
-
-    return page_byte_arr
 
 
 @stream_with_context
