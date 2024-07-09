@@ -94,7 +94,7 @@ def resize_image(page_stream, scaling):
         new_height = int(page.height * scaling)
         current_app.logger.debug(f"New width and height: {new_width}, {new_height}")
 
-        page_resized = page.resize((new_width, new_height), Image.LANCZOS) # TODO: try other filters for better performance 
+        page_resized = page.resize((new_width, new_height), Image.NEAREST) 
         
         current_app.logger.debug(f"Page resized: {page_resized}")
 
@@ -108,9 +108,6 @@ def resize_image(page_stream, scaling):
 
     except Exception as e: 
         current_app.logger.debug(f"Error while opening image: {e}")
-
-   
-    
 
 
 @stream_with_context

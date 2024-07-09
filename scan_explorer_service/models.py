@@ -160,7 +160,6 @@ class Page(Base, Timestamp):
         image_path = f'bitmaps{separator}{self.collection.type}{separator}{self.collection.journal}{separator}{self.collection.volume}{separator}600'
         image_path = image_path.replace('.', '_') 
         image_path += f'{separator}{self.name}' 
-        current_app.logger.debug(f'Image path {image_path}')
         if self.color_type != PageColor.BW:
             image_path += '.tif'
         return image_path 
