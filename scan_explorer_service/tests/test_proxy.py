@@ -4,9 +4,8 @@ from unittest.mock import MagicMock, patch
 from scan_explorer_service.tests.base import TestCaseDatabase
 from scan_explorer_service.views.image_proxy import image_proxy, get_item
 from scan_explorer_service.models import Article, Base, Collection, Page
-from scan_explorer_service.views.image_proxy import get_pages, fetch_images, fetch_image, fetch_pdf
+from scan_explorer_service.views.image_proxy import get_pages, fetch_images, fetch_object
 from scan_explorer_service.utils.s3_utils import S3Provider 
-from PIL import Image, ImageDraw
 import io
 
 class TestProxy(TestCaseDatabase):
@@ -142,28 +141,28 @@ class TestProxy(TestCaseDatabase):
                 get_item(self.app.db.session, 'non-existent-id')
             assert("ID: non-existent-id not found" in str(context.exception))
 
-    @patch('scan_explorer_service.views.image_proxy.fetch_image')
-    def test_fetch_images(self, mock_fetch_image):
-        mock_fetch_image.return_value = b'image_data'
+    @patch('scan_explorer_service.views.image_proxy.fetch_object')
+    def test_fetch_images(self, mock_fetch_object):
+        mock_fetch_object.return_value = b'image_data'
         item = self.article
         page_start = 1
         page_end = 2
         page_limit = 5
         memory_limit = 100
 
-        gen = fetch_images(self.app.db.session, item, page_start, page_end, page_limit, memory_limit, 600)
+        gen = fetch_images(self.app.db.session, item, page_start, page_end, page_limit, memory_limit)
         images = list(gen)
         self.assertEqual(images, [b'image_data', b'image_data'])
-        mock_fetch_image.assert_called()
+        mock_fetch_object.assert_called()
 
     @patch('scan_explorer_service.utils.s3_utils.S3Provider.read_object_s3')
-    def test_fetch_image(self, mock_read_object_s3):
+    def test_fetch_object(self, mock_read_object_s3):
         object_name = 'bitmaps/type/journal/volume/600/page'
         mock_read_object_s3.return_value = b'image-data'
 
         self.app.config['AWS_BUCKET_NAME'] = 'bucket-name'
         
-        result = fetch_image(object_name)
+        result = fetch_object(object_name, 'AWS_BUCKET_NAME')
         
         mock_read_object_s3.assert_called_once_with(object_name)
         self.assertEqual(result, b'image-data')
@@ -183,29 +182,14 @@ class TestProxy(TestCaseDatabase):
     #     self.assertEqual(response.headers['Content-Disposition'], f'attachment; filename="{object_name}"')
     #     self.assertEqual(response.data, b'%PDF-1.4')
 
-    @patch('scan_explorer_service.views.image_proxy.fetch_image')
+    @patch('scan_explorer_service.views.image_proxy.fetch_object')
     @patch('scan_explorer_service.utils.s3_utils.S3Provider.read_object_s3')
-    @patch('scan_explorer_service.views.image_proxy.img2pdf.convert')
-    def test_pdf_save_success(self, mock_img2pdf_convert, mock_read_object_s3, mock_fetch_image):
-
-        img = Image.new('RGB', (100, 100), color='red')
-
-        draw = ImageDraw.Draw(img)
-        draw.text((10, 10), "Hello, Pillow!", fill='white')
-
-        img_byte_arr = io.BytesIO()
-        img.save(img_byte_arr, format='TIFF')
-        img_byte_arr.seek(0)  
-
-        mock_read_object_s3.return_value = img_byte_arr
-        mock_fetch_image.return_value = img_byte_arr
-        mock_img2pdf_convert.return_value = b'%PDF-1.4'
+    def test_pdf_save_success(self, mock_read_object_s3, mock_fetch_object):
+        mock_read_object_s3.return_value = b'my_image_name'
+        mock_fetch_object.return_value = b'my_image_name'
 
         data = {
             'id': self.article.id,  
-            'page_start': 1,
-            'page_end': 100,
-            'dpi': 300
         }
         
         response = self.client.get(url_for('proxy.pdf_save', **data))
@@ -213,8 +197,8 @@ class TestProxy(TestCaseDatabase):
         
         assert(response.status_code == 200)
         assert('application/pdf' == response.content_type)
-        assert(b'%PDF-1.4' in response.data)
-        mock_fetch_image.assert_called()
+        assert(b'my_image_name' in response.data)
+        mock_fetch_object.assert_called()
 
 
         

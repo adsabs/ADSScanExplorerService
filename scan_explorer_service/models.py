@@ -151,7 +151,6 @@ class Page(Base, Timestamp):
     @property
     def image_url(self):
         image_api_url = url_for_proxy('proxy.image_proxy', path=self.image_path)
-        current_app.logger.debug(f'Image url {image_api_url}')
         return image_api_url
 
     @property

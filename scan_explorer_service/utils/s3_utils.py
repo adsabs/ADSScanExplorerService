@@ -23,7 +23,6 @@ class S3Provider:
     def write_object_s3(self, file_bytes, object_name):
         try:
             response = self.bucket.put_object(Body=file_bytes, Key=object_name)
-            current_app.logger.info.info(response)
         except (ClientError, ParamValidationError) as e:
             current_app.logger.info.exception(e)
             raise e

@@ -63,7 +63,6 @@ class ManifestFactoryExtended(ManifestFactory):
         return canvas
 
     def create_image_annotation(self, page: Page):
-        # current_app.logger.info(f"Creating image annotation for page: {page}") 
         annotation: Annotation = self.annotation(ident=str(page.id))
         image: Image = annotation.image(
             ident=page.image_path, label=f'p. {page.label}', iiif=True)
