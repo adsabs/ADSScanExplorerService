@@ -8,7 +8,6 @@ PROXY_PREFIX = "/v1/scan"
 IMAGE_API_SERVER = 'http://localhost:8182'
 IMAGE_API_BASE_PATH = '/iiif/2'
 IMAGE_API_BASE_URL = f'{IMAGE_API_SERVER}{IMAGE_API_BASE_PATH}'
-IMAGE_API_BASE_URL = f'{IMAGE_API_SERVER}'
 IMAGE_API_SLASH_SUB = '-~' # Must always correspond to the Cantaloupe setting CANTALOUPE_SLASH_SUBSTITUTE
 IMAGE_PDF_MEMORY_LIMIT = 100*1024*1024 #Limit on memory used to create the pdf in bytes
 IMAGE_PDF_PAGE_LIMIT = 100 # Limit pn number of pages which can be downloaded as pdf
