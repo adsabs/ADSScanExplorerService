@@ -4,9 +4,7 @@ from unittest.mock import MagicMock, patch
 from scan_explorer_service.tests.base import TestCaseDatabase
 from scan_explorer_service.views.image_proxy import image_proxy, get_item
 from scan_explorer_service.models import Article, Base, Collection, Page
-from scan_explorer_service.views.image_proxy import get_pages, fetch_images, fetch_object
-from scan_explorer_service.utils.s3_utils import S3Provider 
-import io
+from scan_explorer_service.views.image_proxy import img2pdf, fetch_images, fetch_object
 
 class TestProxy(TestCaseDatabase):
 
@@ -184,7 +182,7 @@ class TestProxy(TestCaseDatabase):
 
     @patch('scan_explorer_service.views.image_proxy.fetch_object')
     @patch('scan_explorer_service.utils.s3_utils.S3Provider.read_object_s3')
-    def test_pdf_save_success(self, mock_read_object_s3, mock_fetch_object):
+    def test_pdf_save_success_article(self, mock_read_object_s3, mock_fetch_object):
         mock_read_object_s3.return_value = b'my_image_name'
         mock_fetch_object.return_value = b'my_image_name'
 
@@ -200,8 +198,27 @@ class TestProxy(TestCaseDatabase):
         assert(b'my_image_name' in response.data)
         mock_fetch_object.assert_called()
 
+    @patch('scan_explorer_service.views.image_proxy.img2pdf.convert')
+    @patch('scan_explorer_service.views.image_proxy.fetch_images')
+    def test_pdf_save_success_collection(self, mock_fetch_images, mock_img2pdf_convert):
+        mock_fetch_images.return_value = [b'image_data_1', b'image_data_2', b'image_data_3']
 
+        mock_img2pdf_convert.return_value = b'pdf_data'
+
+        data = {
+            'id': self.collection.id,  
+            'page_start': 1, 
+            'page_end': 3
+        }
         
+        response = self.client.get(url_for('proxy.pdf_save', **data))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content_type, 'application/pdf')
+        self.assertEqual(response.data, b'pdf_data')
+
+        mock_img2pdf_convert.assert_called_once_with([b'image_data_1', b'image_data_2', b'image_data_3'])
+
 
 if __name__ == '__main__':
     unittest.main()

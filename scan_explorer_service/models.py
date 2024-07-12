@@ -156,23 +156,19 @@ class Page(Base, Timestamp):
     @property
     def image_path(self):
         separator = current_app.config.get('IMAGE_API_SLASH_SUB', '%2F')
-        image_path = f'bitmaps{separator}{self.collection.type}{separator}{self.collection.journal}{separator}{self.collection.volume}{separator}600'
-        image_path = image_path.replace('.', '_') 
-        image_path += f'{separator}{self.name}' 
+        image_path = self.image_path_basic.copy()
+        image_path = separator.join(image_path) 
         if self.color_type != PageColor.BW:
             image_path += '.tif'
         return image_path 
     
     @property
-    def simple_image_path(self):
-        separator = "/" 
-        image_path = f'bitmaps{separator}{self.collection.type}{separator}{self.collection.journal}{separator}{self.collection.volume}{separator}600'
-        image_path = image_path.replace('.', '_') 
-        image_path += f'{separator}{self.name}' 
-        current_app.logger.debug(f'Image path {image_path}')
-    
+    def image_path_basic(self):
+        image_path = [self.collection.type, self.collection.journal, self.collection.volume]
+        image_path = [item.replace('.', '_') for item in image_path]
+        image_path = ['bitmaps'] + image_path + ['600', self.name]
+        
         return image_path 
-    
 
     @property
     def thumbnail_url(self):
