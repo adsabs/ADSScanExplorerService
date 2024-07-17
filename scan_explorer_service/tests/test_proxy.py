@@ -165,25 +165,9 @@ class TestProxy(TestCaseDatabase):
         mock_read_object_s3.assert_called_once_with(object_name)
         self.assertEqual(result, b'image-data')
 
-    # @patch('scan_explorer_service.utils.s3_utils.S3Provider.read_object_s3')
-    # @patch('scan_explorer_service.views.image_proxy.current_app')
-    # def test_fetch_pdf(self, mock_current_app, mock_read_object_s3):
-    #     mock_read_object_s3.return_value = b'%PDF-1.4'
-    #     mock_current_app.config = {'AWS_BUCKET_NAME': 'test-bucket'}
-    #     mock_current_app.logger = MagicMock()
-
-    #     object_name = 'test.pdf'
-    #     response = fetch_pdf(object_name)
-
-    #     mock_read_object_s3.assert_called_once_with('pdfs/test.pdf', 'AWS_BUCKET_NAME')
-    #     self.assertEqual(response.mimetype, 'application/pdf')
-    #     self.assertEqual(response.headers['Content-Disposition'], f'attachment; filename="{object_name}"')
-    #     self.assertEqual(response.data, b'%PDF-1.4')
-
     @patch('scan_explorer_service.views.image_proxy.fetch_object')
-    @patch('scan_explorer_service.utils.s3_utils.S3Provider.read_object_s3')
-    def test_pdf_save_success_article(self, mock_read_object_s3, mock_fetch_object):
-        mock_read_object_s3.return_value = b'my_image_name'
+    def test_pdf_save_success_article(self, mock_fetch_object):
+        # mock_read_object_s3.return_value = b'my_image_name'
         mock_fetch_object.return_value = b'my_image_name'
 
         data = {
@@ -191,7 +175,6 @@ class TestProxy(TestCaseDatabase):
         }
         
         response = self.client.get(url_for('proxy.pdf_save', **data))
-        
         
         assert(response.status_code == 200)
         assert('application/pdf' == response.content_type)
@@ -212,7 +195,6 @@ class TestProxy(TestCaseDatabase):
         }
         
         response = self.client.get(url_for('proxy.pdf_save', **data))
-
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content_type, 'application/pdf')
         self.assertEqual(response.data, b'pdf_data')

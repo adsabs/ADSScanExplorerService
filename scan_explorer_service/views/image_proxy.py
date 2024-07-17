@@ -89,7 +89,6 @@ def fetch_images(session, item, page_start, page_end, page_limit, memory_limit):
         n_pages = 0
         memory_sum = 0
         query = get_pages(item, session, page_start, page_end, page_limit)
-        
         for page in query.all():
             
             n_pages += 1

@@ -156,8 +156,7 @@ class Page(Base, Timestamp):
     @property
     def image_path(self):
         separator = current_app.config.get('IMAGE_API_SLASH_SUB', '%2F')
-        image_path = self.image_path_basic.copy()
-        image_path = separator.join(image_path) 
+        image_path = separator.join(self.image_path_basic) 
         if self.color_type != PageColor.BW:
             image_path += '.tif'
         return image_path 
