@@ -121,8 +121,32 @@ def fetch_object(object_name, bucket_name):
     file_content = S3Provider(current_app.config, bucket_name).read_object_s3(object_name)
     current_app.logger.info(f"Successfully fetched object from S3 bucket: {object_name}")
     return file_content
-   
 
+
+def fetch_article(item):
+    try:
+        current_app.logger.info(f"Item is an article: {item.id}")
+        object_name = f'{item.id}.pdf'.lower()
+        full_path = f'pdfs/{object_name}'
+        file_content = fetch_object(full_path, 'AWS_BUCKET_NAME_PDF')
+        response = Response(file_content, mimetype='application/pdf')
+        response.headers['Content-Disposition'] = f'attachment; filename="{object_name}"'
+        return response
+    except Exception as e:
+        current_app.logger.info(f"Failed to get PDF using fallback method for {object_name}: {str(e)}")
+        
+       
+def generate_pdf(item, session, page_start, page_end, page_limit, memory_limit): 
+    if isinstance(item, Article):
+        response = fetch_article(item)
+        if response:
+            return response
+        else:
+            page_end = page_limit
+
+    return Response(img2pdf.convert([im for im in fetch_images(session, item, page_start, page_end, page_limit, memory_limit)]), mimetype='application/pdf')
+
+                 
 @advertise(scopes=['api'], rate_limit=[5000, 3600*24])
 @bp_proxy.route('/pdf', methods=['GET'])
 def pdf_save():
@@ -133,46 +157,13 @@ def pdf_save():
         page_end = request.args.get('page_end', math.inf, int)
         memory_limit = current_app.config.get("IMAGE_PDF_MEMORY_LIMIT")
         page_limit = current_app.config.get("IMAGE_PDF_PAGE_LIMIT")
+
         with current_app.session_scope() as session:
             
             item = get_item(session, id) 
             current_app.logger.info(f"Item retrieved successfully: {item.id}")
 
-            profiler = cProfile.Profile()
-            profiler.enable()
-            
-            # If it's article, fetch it from classic S3 bucket 
-            if isinstance(item, Article):
-                try: 
-                    current_app.logger.info(f"Item is an article: {item.id}")
-                    object_name = f'{item.id}.pdf'.lower()
-                    full_path = f'pdfs/{object_name}'
-                    file_content = fetch_object(full_path, 'AWS_BUCKET_NAME_PDF')
-                    response = Response(file_content, mimetype='application/pdf')
-                    response.headers['Content-Disposition'] = f'attachment; filename="{object_name}"'
-                    
-                except Exception as e: 
-                    current_app.logger.info(f"Failed to get PDF using fallback method for {object_name}: {str(e)}")
-                    # Get first 100 pages
-                    page_end = page_limit
-                    response = Response(img2pdf.convert([im for im in fetch_images(session, item, page_start, page_end, page_limit, memory_limit)]), mimetype='application/pdf')    
-            else: 
-                    response = Response(img2pdf.convert([im for im in fetch_images(session, item, page_start, page_end, page_limit, memory_limit)]), mimetype='application/pdf') 
-
-            profiler.disable()
-            
-            # Log the profiling information
-            log_buffer = io.StringIO()
-            profiler_stats = pstats.Stats(profiler, stream=log_buffer)
-            profiler_stats.strip_dirs().sort_stats('cumulative', 'calls').print_stats(20)
-
-            formatted_stats = log_buffer.getvalue().splitlines()
-
-            current_app.logger.debug(f'==================Profiling information========================: \n')
-            for line in formatted_stats:
-                current_app.logger.debug(line)
-
-           
-            return response
+            response = generate_pdf(item, session, page_start, page_end, page_limit, memory_limit)
+            return response 
     except Exception as e:
         return jsonify(Message=str(e)), 400    
