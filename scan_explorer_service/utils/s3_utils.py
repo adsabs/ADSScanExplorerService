@@ -36,7 +36,7 @@ class S3Provider:
                 s3_file = s3_obj.read()
                 return s3_file
         except (ClientError, ParamValidationError) as e:
-            current_app.logger.info.exception(e)
+            current_app.logger.exception(e)
             raise e
 
 
