@@ -1,11 +1,10 @@
 import unittest
-from flask_testing import TestCase
 from flask import url_for
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from scan_explorer_service.tests.base import TestCaseDatabase
-from scan_explorer_service.views.image_proxy import image_proxy, image_proxy_thumbnail
+from scan_explorer_service.views.image_proxy import image_proxy, get_item
 from scan_explorer_service.models import Article, Base, Collection, Page
-
+from scan_explorer_service.views.image_proxy import img2pdf, fetch_images, fetch_object
 
 class TestProxy(TestCaseDatabase):
 
@@ -53,7 +52,17 @@ class TestProxy(TestCaseDatabase):
         self.app.db.session.commit()
         self.app.db.session.refresh(self.page)
 
+        self.page1 = Page(name='page1', collection_id=self.collection.id)
+        self.page1.width = 1000
+        self.page1.height = 1000
+        self.page1.label = 'label'
+        self.page1.volume_running_page_num = 101
+        self.app.db.session.add(self.page1)
+        self.app.db.session.commit()
+        self.app.db.session.refresh(self.page1)
+        
         self.article.pages.append(self.page)
+        self.article.pages.append(self.page1)
         self.app.db.session.commit()
         self.app.db.session.refresh(self.article)
 
@@ -116,6 +125,81 @@ class TestProxy(TestCaseDatabase):
         assert(mock_request.called)
         assert(response.is_streamed)
         assert(response.status_code == 200)
+
+    def test_get_item(self):
+        """Test retrieving an item by its ID"""
+        with self.app.app_context():
+            article = get_item(self.app.db.session, self.article.id)
+            assert(isinstance(article, Article))
+
+            collection = get_item(self.app.db.session, self.collection.id)
+            assert(isinstance(collection, Collection))
+
+            with self.assertRaises(Exception) as context:
+                get_item(self.app.db.session, 'non-existent-id')
+            assert("ID: non-existent-id not found" in str(context.exception))
+
+    @patch('scan_explorer_service.views.image_proxy.fetch_object')
+    def test_fetch_images(self, mock_fetch_object):
+        mock_fetch_object.return_value = b'image_data'
+        item = self.article
+        page_start = 1
+        page_end = 2
+        page_limit = 5
+        memory_limit = 100
+
+        gen = fetch_images(self.app.db.session, item, page_start, page_end, page_limit, memory_limit)
+        images = list(gen)
+        self.assertEqual(images, [b'image_data', b'image_data'])
+        mock_fetch_object.assert_called()
+
+    @patch('scan_explorer_service.utils.s3_utils.S3Provider.read_object_s3')
+    def test_fetch_object(self, mock_read_object_s3):
+        object_name = 'bitmaps/type/journal/volume/600/page'
+        mock_read_object_s3.return_value = b'image-data'
+
+        self.app.config['AWS_BUCKET_NAME'] = 'bucket-name'
+        
+        result = fetch_object(object_name, 'AWS_BUCKET_NAME')
+        
+        mock_read_object_s3.assert_called_once_with(object_name)
+        self.assertEqual(result, b'image-data')
+
+    @patch('scan_explorer_service.views.image_proxy.fetch_object')
+    def test_pdf_save_success_article(self, mock_fetch_object):
+        # mock_read_object_s3.return_value = b'my_image_name'
+        mock_fetch_object.return_value = b'my_image_name'
+
+        data = {
+            'id': self.article.id,  
+        }
+        
+        response = self.client.get(url_for('proxy.pdf_save', **data))
+        
+        assert(response.status_code == 200)
+        assert('application/pdf' == response.content_type)
+        assert(b'my_image_name' in response.data)
+        mock_fetch_object.assert_called()
+
+    @patch('scan_explorer_service.views.image_proxy.img2pdf.convert')
+    @patch('scan_explorer_service.views.image_proxy.fetch_images')
+    def test_pdf_save_success_collection(self, mock_fetch_images, mock_img2pdf_convert):
+        mock_fetch_images.return_value = [b'image_data_1', b'image_data_2', b'image_data_3']
+
+        mock_img2pdf_convert.return_value = b'pdf_data'
+
+        data = {
+            'id': self.collection.id,  
+            'page_start': 1, 
+            'page_end': 3
+        }
+        
+        response = self.client.get(url_for('proxy.pdf_save', **data))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content_type, 'application/pdf')
+        self.assertEqual(response.data, b'pdf_data')
+
+        mock_img2pdf_convert.assert_called_once_with([b'image_data_1', b'image_data_2', b'image_data_3'])
 
 
 if __name__ == '__main__':
