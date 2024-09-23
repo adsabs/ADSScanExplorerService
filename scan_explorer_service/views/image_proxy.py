@@ -9,7 +9,6 @@ from scan_explorer_service.models import Collection, Page, Article
 from scan_explorer_service.utils.db_utils import item_thumbnail
 from scan_explorer_service.utils.s3_utils import S3Provider
 from scan_explorer_service.utils.utils import url_for_proxy
-import io, cProfile, pstats 
 
 bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
 
@@ -23,14 +22,12 @@ def image_proxy(path):
 
     req_headers['X-Forwarded-Host'] = current_app.config.get('PROXY_SERVER')
     req_headers['X-Forwarded-Path'] = current_app.config.get('PROXY_PREFIX').rstrip('/') + '/image'
-    request_method = request.method
-    
 
-    current_app.logger.info(f'Request method: {request_method}')
-
-    r = requests.request(request_method, req_url, params=request.args, stream=True,
+    current_app.logger.debug(f'req_url:{req_url}')
+    r = requests.request(request.method, req_url, params=request.args, stream=True,
                          headers=req_headers, allow_redirects=False, data=request.form)
-
+    current_app.logger.debug(f'Image proxy response: {r.json()}')
+    
     excluded_headers = ['content-encoding','content-length', 'transfer-encoding', 'connection']
     headers = [(name, value) for (name, value) in r.headers.items() if name.lower() not in excluded_headers]
 
@@ -47,17 +44,27 @@ def image_proxy_thumbnail():
     """Helper to generate the correct url for a thumbnail given an ID and type"""
     try:
         id = request.args.get('id')
+        current_app.logger.debug(f'id {id}')
         type = request.args.get('type')
+        current_app.logger.debug(f'type {type}')
+
         with current_app.session_scope() as session:
             thumbnail_path = item_thumbnail(session, id, type)
+            
+            current_app.logger.debug(f'thumbnail path {thumbnail_path}')
+            
             path = urlparse.urlparse(thumbnail_path).path
+            current_app.logger.debug(f'path {path}')
             
             remove = urlparse.urlparse(url_for_proxy('proxy.image_proxy', path='')).path
+            current_app.logger.debug(f'remove {remove}')
+            
             path = path.replace(remove, '')
+            current_app.logger.debug(f'replace {path}')
             
             return image_proxy(path)
     except Exception as e:
-        current_app.logger.info(f'{e}')
+        current_app.logger.exception(f'{e}')
         return jsonify(Message=str(e)), 400
     
 def get_item(session, id): 
@@ -86,46 +93,37 @@ def get_pages(item, session, page_start, page_end, page_limit):
 
 @stream_with_context
 def fetch_images(session, item, page_start, page_end, page_limit, memory_limit):
-        n_pages = 0
-        memory_sum = 0
-        query = get_pages(item, session, page_start, page_end, page_limit)
-        for page in query.all():
-            
-            n_pages += 1
-            
-            current_app.logger.info(f"Generating image for page: {n_pages}") 
-            current_app.logger.info(f'Id: {page.id}, Volume_page: {page.volume_running_page_num}, memory: {memory_sum}')
-            if n_pages > page_limit:
-                break
-            if memory_sum > memory_limit:
-                current_app.logger.error(f"Memory limit reached: {memory_sum} > {memory_limit}") 
-                break
-            
-            current_app.logger.info(f"Getting image for page: {n_pages}") 
-            current_app.logger.info(f'Id: {page.id}, Volume_page: {page.volume_running_page_num}, memory: {memory_sum}')
-            if n_pages > page_limit:
-                break
-            if memory_sum > memory_limit:
-                current_app.logger.error(f"Memory limit reached: {memory_sum} > {memory_limit}") 
-                break
-         
-            object_name = '/'.join(page.image_path_basic)
-            current_app.logger.info(f"Image path: {object_name}")
-            im_data = fetch_object(object_name, 'AWS_BUCKET_NAME_IMAGE')
-            current_app.logger.info(f"File content: {im_data}")
+    n_pages = 0
+    memory_sum = 0
+    query = get_pages(item, session, page_start, page_end, page_limit)
+    for page in query.all():
+        
+        n_pages += 1
+        
+        current_app.logger.debug(f"Generating image for page: {n_pages}") 
+        current_app.logger.debug(f'Id: {page.id}, Volume_page: {page.volume_running_page_num}, memory: {memory_sum}')
+        if n_pages > page_limit:
+            break
+        if memory_sum > memory_limit:
+            current_app.logger.error(f"Memory limit reached: {memory_sum} > {memory_limit}") 
+            break
+        
+        object_name = '/'.join(page.image_path_basic)
+        current_app.logger.debug(f"Image path: {object_name}")
+        im_data = fetch_object(object_name, 'AWS_BUCKET_NAME_IMAGE')
 
-            yield im_data
+        yield im_data
 
 
 def fetch_object(object_name, bucket_name):
     file_content = S3Provider(current_app.config, bucket_name).read_object_s3(object_name)
-    current_app.logger.info(f"Successfully fetched object from S3 bucket: {object_name}")
+    current_app.logger.debug(f"Successfully fetched object from S3 bucket: {object_name}")
     return file_content
 
 
 def fetch_article(item):
     try:
-        current_app.logger.info(f"Item is an article: {item.id}")
+        current_app.logger.debug(f"Item is an article: {item.id}")
         object_name = f'{item.id}.pdf'.lower()
         full_path = f'pdfs/{object_name}'
         file_content = fetch_object(full_path, 'AWS_BUCKET_NAME_PDF')
@@ -133,7 +131,7 @@ def fetch_article(item):
         response.headers['Content-Disposition'] = f'attachment; filename="{object_name}"'
         return response
     except Exception as e:
-        current_app.logger.info(f"Failed to get PDF using fallback method for {object_name}: {str(e)}")
+        current_app.logger.exception(f"Failed to get PDF using fallback method for {object_name}: {str(e)}")
         
        
 def generate_pdf(item, session, page_start, page_end, page_limit, memory_limit): 
