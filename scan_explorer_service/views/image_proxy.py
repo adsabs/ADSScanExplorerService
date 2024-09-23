@@ -23,7 +23,8 @@ def image_proxy(path):
     req_headers['X-Forwarded-Host'] = current_app.config.get('PROXY_SERVER')
     req_headers['X-Forwarded-Path'] = current_app.config.get('PROXY_PREFIX').rstrip('/') + '/image'
 
-    current_app.logger.debug(f'req_url: {req_url}')
+    current_app.logger.debug(f'req_url: {req_url}, params: {request.args}, headers: {req_headers}, data: {request.form}')
+
     r = requests.request(request.method, req_url, params=request.args, stream=True,
                          headers=req_headers, allow_redirects=False, data=request.form)
     
