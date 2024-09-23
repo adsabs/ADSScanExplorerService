@@ -23,16 +23,11 @@ def image_proxy(path):
     req_headers['X-Forwarded-Host'] = current_app.config.get('PROXY_SERVER')
     req_headers['X-Forwarded-Path'] = current_app.config.get('PROXY_PREFIX').rstrip('/') + '/image'
 
-    current_app.logger.debug(f'req_url:{req_url}')
+    current_app.logger.debug(f'req_url: {req_url}')
     r = requests.request(request.method, req_url, params=request.args, stream=True,
                          headers=req_headers, allow_redirects=False, data=request.form)
-    if r.status_code == 200:
-        try:
-            current_app.logger.debug(f'Image proxy response: {r.json()}')
-        except ValueError:
-            current_app.logger.error(f"Failed to parse JSON, response text: {r.text}")
-    else:
-        current_app.logger.error(f"Request failed with status code: {r.status_code}")
+    
+    current_app.logger.debug(f"Response status code: {r.status_code}")
     
     excluded_headers = ['content-encoding','content-length', 'transfer-encoding', 'connection']
     headers = [(name, value) for (name, value) in r.headers.items() if name.lower() not in excluded_headers]
