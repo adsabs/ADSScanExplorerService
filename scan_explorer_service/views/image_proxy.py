@@ -23,7 +23,7 @@ def image_proxy(path):
     req_headers['X-Forwarded-Host'] = current_app.config.get('PROXY_SERVER')
     req_headers['X-Forwarded-Path'] = current_app.config.get('PROXY_PREFIX').rstrip('/') + '/image'
 
-    encoded_url = urlparse.quote(req_url, safe=":/")
+    encoded_url = req_url.replace("+", "%2B")
 
     current_app.logger.debug(f'req_url: {encoded_url}, params: {request.args}, headers: {req_headers}, data: {request.form}')
 
