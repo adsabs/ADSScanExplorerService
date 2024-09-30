@@ -47,7 +47,7 @@ def image_proxy(path):
 def image_proxy_thumbnail():
     """Helper to generate the correct url for a thumbnail given an ID and type"""
     try:
-        id = request.args.get('id')
+        id = request.args.get('id').replace(" ", "+")
         current_app.logger.debug(f'id {id}')
         type = request.args.get('type')
         current_app.logger.debug(f'type {type}')
