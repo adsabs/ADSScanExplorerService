@@ -76,8 +76,10 @@ def get_item(session, id):
                 session.query(Article).filter(Article.id == id).one_or_none()
                 or session.query(Collection).filter(Collection.id == id).one_or_none())
     if not item: 
+        current_app.logger.debug(f'Item with id {id} not found')
         raise Exception("ID: " + id + " not found")
     
+    current_app.logger.debug(f'Item retrieved successfully {item}')
     return item 
 
 
@@ -128,11 +130,20 @@ def fetch_object(object_name, bucket_name):
 def fetch_article(item):
     try:
         current_app.logger.debug(f"Item is an article: {item.id}")
+
         object_name = f'{item.id}.pdf'.lower()
+        current_app.logger.debug(f"object name: {object_name}")
+
         full_path = f'pdfs/{object_name}'
+        current_app.logger.debug(f"full path: {full_path}")
+
         file_content = fetch_object(full_path, 'AWS_BUCKET_NAME_PDF')
+        current_app.logger.debug(f"file content: {file_content}")
+
         response = Response(file_content, mimetype='application/pdf')
+        
         response.headers['Content-Disposition'] = f'attachment; filename="{object_name}"'
+        
         return response
     except Exception as e:
         current_app.logger.exception(f"Failed to get PDF using fallback method for {object_name}: {str(e)}")
@@ -141,6 +152,7 @@ def fetch_article(item):
 def generate_pdf(item, session, page_start, page_end, page_limit, memory_limit): 
     if isinstance(item, Article):
         response = fetch_article(item)
+        current_app.logger.debug(f"response fetch article: {response}")
         if response:
             return response
         else:
@@ -160,12 +172,15 @@ def pdf_save():
         memory_limit = current_app.config.get("IMAGE_PDF_MEMORY_LIMIT")
         page_limit = current_app.config.get("IMAGE_PDF_PAGE_LIMIT")
 
+        current_app.logger.debug(f"pdf ID: {id}, page_start: {page_start}, page_end: {page_end}, memory_limit: {memory_limit}, page_limit: {page_limit}")
+
         with current_app.session_scope() as session:
             
             item = get_item(session, id) 
-            current_app.logger.info(f"Item retrieved successfully: {item.id}")
+            current_app.logger.debug(f"Item retrieved successfully: {item.id}")
 
             response = generate_pdf(item, session, page_start, page_end, page_limit, memory_limit)
+            current_app.logger.debug(f"Response pdf save: {response}")
             return response 
     except Exception as e:
         return jsonify(Message=str(e)), 400    
