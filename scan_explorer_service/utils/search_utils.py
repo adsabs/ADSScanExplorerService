@@ -73,7 +73,7 @@ def parse_query_string(qs):
         qs_only_free = qs_only_free.replace(kv, "")
         if len(kv_arr) == 2:
             qs_dict[kv_arr[0].lower()] = kv_arr[1].strip()
-            #If the option have qutoes we remove them from the free. Previous removal would than have failed
+            #If the option have quotes we remove them from the free. Previous removal would than have failed
             alt_kv = kv_arr[0] + ':"' + kv_arr[1] + '"'
             qs_only_free = qs_only_free.replace(alt_kv, '')
 
@@ -86,11 +86,10 @@ def parse_query_string(qs):
     for key in qs_dict.keys():
         #Translate input on the keys to the dedicated OS columns
         insensitive_replace = re.compile(re.escape(key), re.IGNORECASE)
-        qs = insensitive_replace.sub(query_translations[key.lower()], qs)
-
-        insensitive_replace = re.compile(re.escape(qs_dict[key]), re.IGNORECASE)
+        qs = insensitive_replace.sub(query_translations[key.lower()], qs)   
+        # To ensure only the strings after the colon are replaced and no partial replacements are made 
+        insensitive_replace = re.compile(r'(?<=:)\b' + re.escape(qs_dict[key]) + r'\b', re.IGNORECASE)
         qs = insensitive_replace.sub(qs_dict[key], qs)
-
     return qs, qs_dict
 
 def parse_sorting_option(sort_input: str):
@@ -131,6 +130,7 @@ def check_page_color(qs_dict: dict):
         valid_types = [p.name for p in PageColor]
         if page_color in valid_types:
             return
+        
         # Check lowercased and updated to cased
         for p in PageColor:
             if page_color.replace('"','').lower() == p.name.lower():
