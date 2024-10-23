@@ -4,6 +4,8 @@ import shlex
 import enum
 import re
 
+from flask import current_app
+
 class SearchOptions(enum.Enum):
     """Available Search Options"""
     Bibcode = 'bibcode'
@@ -53,30 +55,44 @@ class OrderOptions(str, enum.Enum):
 
 def parse_query_args(args):
     qs = re.sub(':\s*', ':', args.get('q', '', str))
+    current_app.logger.debug(f'qs {qs}')
+
     qs, qs_dict = parse_query_string(qs)
+
+    current_app.logger.debug(f'qs {qs}, qs_dict {qs_dict}')
+
 
     page = args.get('page', 1, int)
     limit = args.get('limit', 10, int)
     sort_raw = args.get('sort')
     sort = parse_sorting_option(sort_raw)
+    current_app.logger.debug(f'qs {qs}, qs_dict {qs_dict}, sort {sort}')
     return qs, qs_dict, page, limit, sort
 
 def parse_query_string(qs):
     qs_to_split = qs.replace('[', '"[').replace(']',']"')
+    current_app.logger.debug(f'qs to split {qs_to_split}')
     qs_arr = [q for q in shlex.split(qs_to_split) if ':' in q]
+    current_app.logger.debug(f'qs arr {qs_arr}')
     qs_dict = {}
     qs_only_free = qs
+    current_app.logger.debug(f'qs only free {qs_only_free}')
     
     for kv in qs_arr:
         kv_arr = kv.split(':', maxsplit=1)
+        current_app.logger.debug(f'kv_arr {kv_arr}')
         #Remove all parameter from the original search to be able to handle the free search
         qs_only_free = qs_only_free.replace(kv, "")
+        current_app.logger.debug(f'qs_only_free {qs_only_free}')
+
         if len(kv_arr) == 2:
             qs_dict[kv_arr[0].lower()] = kv_arr[1].strip()
             #If the option have quotes we remove them from the free. Previous removal would than have failed
             alt_kv = kv_arr[0] + ':"' + kv_arr[1] + '"'
             qs_only_free = qs_only_free.replace(alt_kv, '')
+            current_app.logger.debug(f'kv_arr == 2. alt_kv {alt_kv}, qs_only_free {qs_only_free}')
 
+    current_app.logger.debug(f'qs dict {qs_dict}')    
     check_query(qs_dict)
     #Adds a () around each free search to force OS to look for each individual entry against all default fields
     for parameter in re.split('\s+', qs_only_free):
@@ -90,6 +106,7 @@ def parse_query_string(qs):
         # To ensure only the strings after the colon are replaced and no partial replacements are made 
         insensitive_replace = re.compile(r'(?<=:)\b' + re.escape(qs_dict[key]) + r'\b', re.IGNORECASE)
         qs = insensitive_replace.sub(qs_dict[key], qs)
+    current_app.logger.debug(f'qs: {qs} and qs dict: {qs_dict}')    
     return qs, qs_dict
 
 def parse_sorting_option(sort_input: str):
@@ -129,12 +146,14 @@ def check_page_color(qs_dict: dict):
         page_color = qs_dict[SearchOptions.PageColor.value]
         valid_types = [p.name for p in PageColor]
         if page_color in valid_types:
+            current_app.logger.debug("Page color {page_color} is valid")
             return
         
         # Check lowercased and updated to cased
         for p in PageColor:
             if page_color.replace('"','').lower() == p.name.lower():
                 qs_dict[SearchOptions.PageColor.value] = p.name
+                current_app.logger.debug("Page color {qs_dict[SearchOptions.PageColor.value]} changed to {p.name}")
                 return
         raise Exception("%s is not a valid page color, %s is possible choices"% (page_color, str(valid_types)))
 
