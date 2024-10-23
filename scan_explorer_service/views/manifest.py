@@ -18,6 +18,7 @@ def before_request():
     manifest_factory.set_base_prezi_uri(base_uri)
 
     image_proxy = url_for_proxy('proxy.image_proxy', path='')
+    current_app.logger.debug(f'image proxy {image_proxy}')
     manifest_factory.set_base_image_uri(image_proxy)
 
 
@@ -26,18 +27,26 @@ def before_request():
 def get_manifest(id: str):
     """ Creates an IIIF manifest from an article or Collection"""
 
+    current_app.logger.debug(f'id for manifest {id}')
     with current_app.session_scope() as session:
         item: Union[Article, Collection] = (
             session.query(Article).filter(Article.id == id).one_or_none()
             or session.query(Collection).filter(Collection.id == id).one_or_none())
 
         if item:
+            current_app.logger.debug(f'Item found for {id}. Creating manifest.')
             manifest = manifest_factory.create_manifest(item)
-            search_url = url_for_proxy('manifest.search', id=id)
-            manifest_factory.add_search_service(manifest, search_url)
 
+            current_app.logger.debug(f'Manifest {manifest}')
+
+            search_url = url_for_proxy('manifest.search', id=id)
+            current_app.logger.debug(f'Search url {search_url}')
+
+            manifest_factory.add_search_service(manifest, search_url)
+            
             return manifest.toJSON(top=True)
         else:
+            current_app.logger.debug(f'Manifest not found for {id}')
             return jsonify(exception='Article not found'), 404
 
 

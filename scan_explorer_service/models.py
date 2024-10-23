@@ -151,6 +151,7 @@ class Page(Base, Timestamp):
     @property
     def image_url(self):
         image_api_url = url_for_proxy('proxy.image_proxy', path=self.image_path)
+        current_app.logger.debug(f'image api url: {image_api_url}')
         return image_api_url
 
     @property
@@ -159,6 +160,7 @@ class Page(Base, Timestamp):
         image_path = separator.join(self.image_path_basic) 
         if self.color_type != PageColor.BW:
             image_path += '.tif'
+        current_app.logger.debug(f'image path: {image_path}')
         return image_path 
     
     @property
@@ -166,12 +168,14 @@ class Page(Base, Timestamp):
         image_path = [self.collection.type, self.collection.journal, self.collection.volume]
         image_path = [item.replace('.', '_') for item in image_path]
         image_path = ['bitmaps'] + image_path + ['600', self.name]
-        
+        current_app.logger.debug(f'image path basic: {image_path}')
         return image_path 
 
     @property
     def thumbnail_url(self):
-        return f'{self.image_url}/square/480,480/0/{self.image_color_quality}.jpg'
+        url = f'{self.image_url}/square/480,480/0/{self.image_color_quality}.jpg'
+        current_app.logger.debug('thumbnail url: ' + url)
+        return url
 
     @property
     def image_color_quality(self):

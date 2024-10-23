@@ -129,19 +129,26 @@ def article_search():
     """Search for an article using one or some of the available keywords"""
     try:
         qs, qs_dict, page, limit, sort = parse_query_args(request.args)
+        current_app.logger.debug(f'qs: {qs}, qs_dict: {qs_dict}, page: {page}, limit: {limit}, sort: {sort}')
         result = aggregate_search(qs, EsFields.article_id, page, limit, sort)
+        current_app.logger.debug(f'result: {result}')
         text_query = ''
         if SearchOptions.FullText.value in qs_dict.keys():
             text_query = qs_dict[SearchOptions.FullText.value]
+            current_app.logger.debug(f'text_query: {text_query}')
 
         article_count = result['aggregations']['total_count']['value']
+        current_app.logger.debug(f'article_count: {article_count}')
+
         collection_count = page_count = 0
         if article_count == 0:
             collection_count = aggregate_search(qs, EsFields.volume_id, page, limit, sort)['aggregations']['total_count']['value']
+            current_app.logger.debug(f'collection_count: {collection_count}')
             page_count = page_os_search(qs, page, limit, sort)['hits']['total']['value']
+            current_app.logger.debug(f'page_count: {collection_count}')
         return jsonify(serialize_os_article_result(result, page, limit, text_query, collection_count, page_count))
     except Exception as e:
-        current_app.logger.error(f"{e}")
+        current_app.logger.error(f"An exception has occurred: {e}")
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
 
 
