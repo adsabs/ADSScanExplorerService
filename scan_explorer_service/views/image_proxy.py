@@ -113,8 +113,10 @@ def fetch_images(session, item, page_start, page_end, page_limit, memory_limit):
         if memory_sum > memory_limit:
             current_app.logger.error(f"Memory limit reached: {memory_sum} > {memory_limit}") 
             break
-        
-        object_name = '/'.join(page.image_path_basic)
+        image_path, format = page.image_path_basic
+        object_name = '/'.join(image_path)
+        object_name += format
+
         current_app.logger.debug(f"Image path: {object_name}")
         im_data = fetch_object(object_name, 'AWS_BUCKET_NAME_IMAGE')
 
