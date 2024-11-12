@@ -9,6 +9,7 @@ from scan_explorer_service.models import Collection, Page, Article
 from scan_explorer_service.utils.db_utils import item_thumbnail
 from scan_explorer_service.utils.s3_utils import S3Provider
 from scan_explorer_service.utils.utils import url_for_proxy
+import re
 
 bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
 
@@ -23,8 +24,8 @@ def image_proxy(path):
     req_headers['X-Forwarded-Host'] = current_app.config.get('PROXY_SERVER')
     req_headers['X-Forwarded-Path'] = current_app.config.get('PROXY_PREFIX').rstrip('/') + '/image'
 
-    encoded_url = req_url.replace("+", "%2B")
-
+    encoded_url = re.sub(r"[+&]", "%2B", req_url)
+    
     current_app.logger.debug(f'req_url: {encoded_url}, params: {request.args}, headers: {req_headers}, data: {request.form}')
 
     r = requests.request(request.method, encoded_url, params=request.args, stream=True,
