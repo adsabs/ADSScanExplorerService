@@ -126,6 +126,9 @@ def fetch_images(session, item, page_start, page_end, page_limit, memory_limit):
 
 def fetch_object(object_name, bucket_name):
     file_content = S3Provider(current_app.config, bucket_name).read_object_s3(object_name)
+    if not file_content:
+        current_app.logger.error(f"Failed to fetch content for {object_name}. File might be empty.")
+        raise ValueError(f"File content is empty for {object_name}")
     current_app.logger.debug(f"Successfully fetched object from S3 bucket: {object_name}")
     return file_content
 

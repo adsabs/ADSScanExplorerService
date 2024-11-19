@@ -30,13 +30,16 @@ class S3Provider:
 
     def read_object_s3(self, object_name):
         try:
+            current_app.logger.debug(f"Attempting to download object: {object_name}")
             with io.BytesIO() as s3_obj:
                 self.bucket.download_fileobj(object_name, s3_obj)
+                current_app.logger.debug(f"Object downloaded successfully: {object_name}")
                 s3_obj.seek(0)
                 s3_file = s3_obj.read()
+                current_app.logger.debug(f"Read {len(s3_file)} bytes from object: {object_name}")
                 return s3_file
         except (ClientError, ParamValidationError) as e:
-            current_app.logger.exception(e)
+            current_app.logger.exception(f"Error reading object {object_name}: {str(e)}")
             raise e
 
 
