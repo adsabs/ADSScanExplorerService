@@ -10,6 +10,9 @@ from scan_explorer_service.utils.db_utils import item_thumbnail
 from scan_explorer_service.utils.s3_utils import S3Provider
 from scan_explorer_service.utils.utils import url_for_proxy
 import re
+import io 
+import cProfile
+import pstats
 
 bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
 
@@ -172,6 +175,10 @@ def generate_pdf(item, session, page_start, page_end, page_limit, memory_limit):
 def pdf_save():
     """Generate a PDF from pages"""
     try:
+        profiler = cProfile.Profile()
+        profiler.enable()
+        
+
         id = request.args.get('id')
         page_start = request.args.get('page_start', 1, int)
         page_end = request.args.get('page_end', math.inf, int)
@@ -187,6 +194,20 @@ def pdf_save():
 
             response = generate_pdf(item, session, page_start, page_end, page_limit, memory_limit)
             current_app.logger.debug(f"Response pdf save: {response}")
+
+            profiler.disable()
+            
+            # Log the profiling information
+            log_buffer = io.StringIO()
+            profiler_stats = pstats.Stats(profiler, stream=log_buffer)
+            profiler_stats.strip_dirs().sort_stats('cumulative', 'calls').print_stats(20)
+ 
+            formatted_stats = log_buffer.getvalue().splitlines()
+
+            current_app.logger.debug(f'==================Profiling information========================: \n')
+            for line in formatted_stats:
+                current_app.logger.debug(line)
+
             return response 
     except Exception as e:
         return jsonify(Message=str(e)), 400    
