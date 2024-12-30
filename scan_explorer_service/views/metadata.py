@@ -134,7 +134,7 @@ def article_search():
         current_app.logger.debug(f'result: {result}')
         text_query = ''
         if SearchOptions.FullText.value in qs_dict.keys():
-            text_query = qs_dict[SearchOptions.FullText.value]
+            text_query = qs_dict[SearchOptions.FullText.value].lower()
             current_app.logger.debug(f'text_query: {text_query}')
 
         article_count = result['aggregations']['total_count']['value']
@@ -161,7 +161,7 @@ def collection_search():
         result = aggregate_search(qs, EsFields.volume_id, page, limit, sort)
         text_query = ''
         if SearchOptions.FullText.value in qs_dict.keys():
-            text_query = qs_dict[SearchOptions.FullText.value]
+            text_query = qs_dict[SearchOptions.FullText.value].lower()
         return jsonify(serialize_os_collection_result(result, page, limit, text_query))
     except Exception as e:
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
@@ -175,7 +175,7 @@ def page_search():
         result = page_os_search(qs, page, limit, sort)
         text_query = ''
         if SearchOptions.FullText.value in qs_dict.keys():
-            text_query = qs_dict[SearchOptions.FullText.value]
+            text_query = qs_dict[SearchOptions.FullText.value].lower()
         return jsonify(serialize_os_page_result(result, page, limit, text_query))
     except Exception as e:
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400

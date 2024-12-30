@@ -1,5 +1,5 @@
 from typing import Union
-from flask import Blueprint, Response, current_app, request, stream_with_context, jsonify
+from flask import Blueprint, Response, current_app, request, stream_with_context, jsonify, send_file
 from flask_discoverer import advertise
 from urllib import parse as urlparse
 import img2pdf
@@ -150,13 +150,17 @@ def fetch_article(item):
         current_app.logger.debug(f"full path: {full_path}")
 
         file_content = fetch_object(full_path, 'AWS_BUCKET_NAME_PDF')
-        current_app.logger.debug(f"file content: {file_content}")
+        current_app.logger.debug(f"File content type in fetch_article: {type(file_content)}, length: {len(file_content) if file_content else 'None'}")
 
-        response = Response(file_content, mimetype='application/pdf')
-        
-        response.headers['Content-Disposition'] = f'attachment; filename="{object_name}"'
-        
-        return response
+        file_stream = io.BytesIO(file_content)
+        file_stream.seek(0)
+
+        return send_file(
+            file_stream,
+            as_attachment=True,
+            download_name=object_name,
+            mimetype='application/pdf'
+        )
     except Exception as e:
         current_app.logger.exception(f"Failed to get PDF using fallback method for {object_name}: {str(e)}")
         
