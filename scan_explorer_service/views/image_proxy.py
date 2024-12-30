@@ -13,6 +13,7 @@ import re
 import io 
 import cProfile
 import pstats
+import sys
 
 bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
 
@@ -123,6 +124,7 @@ def fetch_images(session, item, page_start, page_end, page_limit, memory_limit):
 
         current_app.logger.debug(f"Image path: {object_name}")
         im_data = fetch_object(object_name, 'AWS_BUCKET_NAME_IMAGE')
+        memory_sum += sys.getsizeof(im_data)
 
         yield im_data
 
@@ -139,7 +141,7 @@ def fetch_object(object_name, bucket_name):
     return file_content
 
 
-def fetch_article(item):
+def fetch_article(item, memory_limit):
     try:
         current_app.logger.debug(f"Item is an article: {item.id}")
 
@@ -151,6 +153,9 @@ def fetch_article(item):
 
         file_content = fetch_object(full_path, 'AWS_BUCKET_NAME_PDF')
         current_app.logger.debug(f"File content type in fetch_article: {type(file_content)}, length: {len(file_content) if file_content else 'None'}")
+
+        if len(file_content) > memory_limit:
+            current_app.logger.error(f"Memory limit reached: {len(file_content)} > {memory_limit}") 
 
         file_stream = io.BytesIO(file_content)
         file_stream.seek(0)
@@ -167,7 +172,7 @@ def fetch_article(item):
        
 def generate_pdf(item, session, page_start, page_end, page_limit, memory_limit): 
     if isinstance(item, Article):
-        response = fetch_article(item)
+        response = fetch_article(item, memory_limit)
         current_app.logger.debug(f"Item is an article")
         current_app.logger.debug(f"response fetch article: {response}")
         if response:
