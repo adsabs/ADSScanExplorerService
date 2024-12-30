@@ -128,11 +128,14 @@ def fetch_images(session, item, page_start, page_end, page_limit, memory_limit):
 
 
 def fetch_object(object_name, bucket_name):
+    current_app.logger.debug(f"Using bucket: {bucket_name}")
     file_content = S3Provider(current_app.config, bucket_name).read_object_s3(object_name)
+    current_app.logger.debug(f"File content type: {type(file_content)}, length: {len(file_content) if file_content else 'None'}")
     if not file_content:
         current_app.logger.error(f"Failed to fetch content for {object_name}. File might be empty.")
         raise ValueError(f"File content is empty for {object_name}")
     current_app.logger.debug(f"Successfully fetched object from S3 bucket: {object_name}")
+   
     return file_content
 
 
@@ -161,12 +164,14 @@ def fetch_article(item):
 def generate_pdf(item, session, page_start, page_end, page_limit, memory_limit): 
     if isinstance(item, Article):
         response = fetch_article(item)
+        current_app.logger.debug(f"Item is an article")
         current_app.logger.debug(f"response fetch article: {response}")
         if response:
             return response
         else:
+            current_app.logger.debug(f"Response fetch article was empty")
             page_end = page_limit
-
+    current_app.logger.debug(f"Article is not an article or fetch article failed.")
     return Response(img2pdf.convert([im for im in fetch_images(session, item, page_start, page_end, page_limit, memory_limit)]), mimetype='application/pdf')
 
                  

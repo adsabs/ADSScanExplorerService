@@ -37,9 +37,10 @@ class S3Provider:
                 s3_obj.seek(0)
                 s3_file = s3_obj.read()
                 current_app.logger.debug(f"Read {len(s3_file)} bytes from object: {object_name}")
+                current_app.logger.debug(f"First 100 bytes of file content: {s3_file[:100]}")
                 return s3_file
-        except (ClientError, ParamValidationError) as e:
-            current_app.logger.exception(f"Error reading object {object_name}: {str(e)}")
-            raise e
+        except Exception as e:
+            current_app.logger.exception(f"Unexpected error reading object {object_name}: {str(e)}")
+            raise
 
 
