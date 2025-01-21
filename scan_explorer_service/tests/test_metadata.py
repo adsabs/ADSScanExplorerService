@@ -89,10 +89,11 @@ class TestMetadata(TestCaseDatabase):
         r = self.client.get(url)
         expected_query = {'query': {'query_string': {'query': 'article_bibcodes_lowercase:1988ApJ...333..341R', 'fields': ['article_bibcodes', 'journal', 'volume_id_lowercase', 'volume'], 'default_operator': 'AND'}}, 'size': 0, 'aggs': {'total_count': {'cardinality': {'field': 'article_bibcodes'}}, 'ids': {'terms': {'field': 'article_bibcodes', 'size': 10000}, 'aggs': {'bucket_sort': {'bucket_sort': {'sort': [{'_key': {'order': 'desc'}}], 'size': 10, 'from': 0}}}}}}
         call_args, call_kwargs = es.search.call_args
-        self.assertEqual(expected_query['query']['query_string']['query'].lower(), call_kwargs.get('body')['query']['query_string']['query'])
+        self.assertEqual(expected_query, call_kwargs.get('body'))
         self.assertStatus(r, 200)
         expected_response = {"extra_collection_count": 0, "extra_page_count": 0,  "items": [{"bibcode": self.article.bibcode, "id": self.article.id, "pages": 3 }], "limit": 10, "page": 1, "pageCount": 1, "query": "",  "total": 1}
-        self.assertEqual(r.json, expected_response)
+        
+        self.assertEqual(r.data, jsonify(expected_response).data)
 
     @patch('opensearchpy.OpenSearch')
     def test_get_collection(self, OpenSearch):

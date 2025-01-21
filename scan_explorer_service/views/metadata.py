@@ -129,7 +129,6 @@ def article_search():
     """Search for an article using one or some of the available keywords"""
     try:
         qs, qs_dict, page, limit, sort = parse_query_args(request.args)
-        qs = qs.lower()
         current_app.logger.debug(f'qs: {qs}, qs_dict: {qs_dict}, page: {page}, limit: {limit}, sort: {sort}')
         result = aggregate_search(qs, EsFields.article_id, page, limit, sort)
         current_app.logger.debug(f'result: {result}')
@@ -159,7 +158,6 @@ def collection_search():
     """Search for a collection using one or some of the available keywords"""
     try:
         qs, qs_dict, page, limit, sort = parse_query_args(request.args)
-        qs = qs.lower()
         result = aggregate_search(qs, EsFields.volume_id, page, limit, sort)
         text_query = ''
         if SearchOptions.FullText.value in qs_dict.keys():
@@ -174,7 +172,6 @@ def page_search():
     """Search for a page using one or some of the available keywords"""
     try:
         qs, qs_dict, page, limit, sort = parse_query_args(request.args)
-        qs = qs.lower()
         result = page_os_search(qs, page, limit, sort)
         text_query = ''
         if SearchOptions.FullText.value in qs_dict.keys():
