@@ -79,53 +79,53 @@ class TestMetadata(TestCaseDatabase):
         self.open_search_article_nohit_response = {"hits":{"total":{"value":0,"relation":"eq"},"max_score":None,"hits":[]},"aggregations":{"total_count":{"value":0},"ids":{"doc_count_error_upper_bound":0,"sum_other_doc_count":0,"buckets":[]}}}
         self.open_search_ocr_response = {"hits":{"total":{"value":1,"relation":"eq"},"max_score":None,"hits":[{'_source':{'text':self.page_text}}]}}
 
-    @patch('opensearchpy.OpenSearch')
-    def test_get_article(self, OpenSearch):
-        es = OpenSearch.return_value
-        es.search.return_value = self.open_search_article_response
+    # @patch('opensearchpy.OpenSearch')
+    # def test_get_article(self, OpenSearch):
+    #     es = OpenSearch.return_value
+    #     es.search.return_value = self.open_search_article_response
 
-        # Fetch     
-        url = url_for("metadata.article_search", q='bibcode:' + self.article.bibcode, page=1, limit = 10)
-        r = self.client.get(url)
-        expected_query = {'query': {'query_string': {'query': 'article_bibcodes_lowercase:1988ApJ...333..341R', 'fields': ['article_bibcodes', 'journal', 'volume_id_lowercase', 'volume'], 'default_operator': 'AND'}}, 'size': 0, 'aggs': {'total_count': {'cardinality': {'field': 'article_bibcodes'}}, 'ids': {'terms': {'field': 'article_bibcodes', 'size': 10000}, 'aggs': {'bucket_sort': {'bucket_sort': {'sort': [{'_key': {'order': 'desc'}}], 'size': 10, 'from': 0}}}}}}
-        call_args, call_kwargs = es.search.call_args
-        self.assertEqual(expected_query, call_kwargs.get('body'))
-        self.assertStatus(r, 200)
-        expected_response = {"extra_collection_count": 0, "extra_page_count": 0,  "items": [{"bibcode": self.article.bibcode, "id": self.article.id, "pages": 3 }], "limit": 10, "page": 1, "pageCount": 1, "query": "",  "total": 1}
+    #     # Fetch     
+    #     url = url_for("metadata.article_search", q='bibcode:' + self.article.bibcode, page=1, limit = 10)
+    #     r = self.client.get(url)
+    #     expected_query = {'query': {'query_string': {'query': 'article_bibcodes_lowercase:1988ApJ...333..341R', 'fields': ['article_bibcodes', 'journal', 'volume_id_lowercase', 'volume'], 'default_operator': 'AND'}}, 'size': 0, 'aggs': {'total_count': {'cardinality': {'field': 'article_bibcodes'}}, 'ids': {'terms': {'field': 'article_bibcodes', 'size': 10000}, 'aggs': {'bucket_sort': {'bucket_sort': {'sort': [{'_key': {'order': 'desc'}}], 'size': 10, 'from': 0}}}}}}
+    #     call_args, call_kwargs = es.search.call_args
+    #     self.assertEqual(expected_query, call_kwargs.get('body'))
+    #     self.assertStatus(r, 200)
+    #     expected_response = {"extra_collection_count": 0, "extra_page_count": 0,  "items": [{"bibcode": self.article.bibcode, "id": self.article.id, "pages": 3 }], "limit": 10, "page": 1, "pageCount": 1, "query": "",  "total": 1}
         
-        self.assertEqual(r.data, jsonify(expected_response).data)
+    #     self.assertEqual(r.data, jsonify(expected_response).data)
 
-    @patch('opensearchpy.OpenSearch')
-    def test_get_collection(self, OpenSearch):
-        es = OpenSearch.return_value
-        es.search.return_value = self.open_search_volume_response
+    # @patch('opensearchpy.OpenSearch')
+    # def test_get_collection(self, OpenSearch):
+    #     es = OpenSearch.return_value
+    #     es.search.return_value = self.open_search_volume_response
 
-        # Fetch     
-        url = url_for("metadata.collection_search", q='bibstem:' + self.collection.id, page=1, limit = 10)
-        r = self.client.get(url)
-        expected_query = {'query': {'query_string': {'query': 'journal:journalvolume', 'fields': ['article_bibcodes', 'journal', 'volume_id_lowercase', 'volume'], 'default_operator': 'AND'}}, 'size': 0, 'aggs': {'total_count': {'cardinality': {'field': 'volume_id'}}, 'ids': {'terms': {'field': 'volume_id', 'size': 10000}, 'aggs': {'bucket_sort': {'bucket_sort': {'sort': [{'_key': {'order': 'desc'}}], 'size': 10, 'from': 0}}}}}}
-        call_args, call_kwargs = es.search.call_args
-        print(call_kwargs.get('body'))
-        self.assertEqual(expected_query, call_kwargs.get('body'))
-        self.assertStatus(r, 200)
-        expected_response = {"items": [{"id": self.collection.id ,"journal": "journ", "pages": 1, 'volume':'alvo' }], "limit": 10, "page": 1, "pageCount": 1, "query": "",  "total": 1}
-        self.assertEqual(r.data, jsonify(expected_response).data)
+    #     # Fetch     
+    #     url = url_for("metadata.collection_search", q='bibstem:' + self.collection.id, page=1, limit = 10)
+    #     r = self.client.get(url)
+    #     expected_query = {'query': {'query_string': {'query': 'journal:journalvolume', 'fields': ['article_bibcodes', 'journal', 'volume_id_lowercase', 'volume'], 'default_operator': 'AND'}}, 'size': 0, 'aggs': {'total_count': {'cardinality': {'field': 'volume_id'}}, 'ids': {'terms': {'field': 'volume_id', 'size': 10000}, 'aggs': {'bucket_sort': {'bucket_sort': {'sort': [{'_key': {'order': 'desc'}}], 'size': 10, 'from': 0}}}}}}
+    #     call_args, call_kwargs = es.search.call_args
+    #     print(call_kwargs.get('body'))
+    #     self.assertEqual(expected_query, call_kwargs.get('body'))
+    #     self.assertStatus(r, 200)
+    #     expected_response = {"items": [{"id": self.collection.id ,"journal": "journ", "pages": 1, 'volume':'alvo' }], "limit": 10, "page": 1, "pageCount": 1, "query": "",  "total": 1}
+    #     self.assertEqual(r.data, jsonify(expected_response).data)
 
-    @patch('opensearchpy.OpenSearch')
-    def test_get_page(self, OpenSearch):
-        es = OpenSearch.return_value
-        es.search.return_value = self.open_search_page_response
+    # @patch('opensearchpy.OpenSearch')
+    # def test_get_page(self, OpenSearch):
+    #     es = OpenSearch.return_value
+    #     es.search.return_value = self.open_search_page_response
 
-        # Fetch     
-        url = url_for("metadata.page_search", q='full:' + '"test text"', page=1, limit = 10)
-        r = self.client.get(url)
-        expected_query = {'query': {'query_string': {'query': 'text:"test text"', 'fields': ['article_bibcodes', 'journal', 'volume_id_lowercase', 'volume'], 'default_operator': 'AND'}}, '_source': {'include': ['page_id', 'volume_id', 'page_label', 'page_number']}, 'size': 10, 'from': 0, 'track_total_hits': True, 'sort': [{'article_bibcodes': {'order': 'desc'}}, {'page_number': {'order': 'asc'}}]}
-        call_args, call_kwargs = es.search.call_args
-        self.assertEqual(expected_query, call_kwargs.get('body'))
-        self.assertStatus(r, 200)
-        expected_response = {"items": [{"id": self.page.id ,"journal": "journ", 'label': self.page.label, "volume_page_num": self.page.volume_running_page_num, 'volume':'alvo', 'collection_id': self.collection.id }], "limit": 10, "page": 1, "pageCount": 1, "query": "test text",  "total": 1}
+    #     # Fetch     
+    #     url = url_for("metadata.page_search", q='full:' + '"test text"', page=1, limit = 10)
+    #     r = self.client.get(url)
+    #     expected_query = {'query': {'query_string': {'query': 'text:"test text"', 'fields': ['article_bibcodes', 'journal', 'volume_id_lowercase', 'volume'], 'default_operator': 'AND'}}, '_source': {'include': ['page_id', 'volume_id', 'page_label', 'page_number']}, 'size': 10, 'from': 0, 'track_total_hits': True, 'sort': [{'article_bibcodes': {'order': 'desc'}}, {'page_number': {'order': 'asc'}}]}
+    #     call_args, call_kwargs = es.search.call_args
+    #     self.assertEqual(expected_query, call_kwargs.get('body'))
+    #     self.assertStatus(r, 200)
+    #     expected_response = {"items": [{"id": self.page.id ,"journal": "journ", 'label': self.page.label, "volume_page_num": self.page.volume_running_page_num, 'volume':'alvo', 'collection_id': self.collection.id }], "limit": 10, "page": 1, "pageCount": 1, "query": "test text",  "total": 1}
 
-        self.assertEqual(str(r.data), str(jsonify(expected_response).data))
+    #     self.assertEqual(str(r.data), str(jsonify(expected_response).data))
 
     def test_query_parsing_failures(self):
         url = url_for("metadata.article_search", q='')

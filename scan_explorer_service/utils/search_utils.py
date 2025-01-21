@@ -86,7 +86,7 @@ def parse_query_string(qs):
         current_app.logger.debug(f'qs_only_free {qs_only_free}')
 
         if len(kv_arr) == 2:
-            qs_dict[kv_arr[0].lower()] = kv_arr[1].strip()
+            qs_dict[kv_arr[0].lower()] = kv_arr[1].lower().strip()
             #If the option have quotes we remove them from the free. Previous removal would than have failed
             alt_kv = kv_arr[0] + ':"' + kv_arr[1] + '"'
             qs_only_free = qs_only_free.replace(alt_kv, '')
