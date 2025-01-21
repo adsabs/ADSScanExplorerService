@@ -72,6 +72,7 @@ def append_highlight(query: dict):
 
 def es_search(query: dict) -> Iterator[str]:
     es = opensearchpy.OpenSearch(current_app.config.get('OPEN_SEARCH_URL'))
+    current_app.logger.debug(f"Query search: {query}")
     resp = es.search(index=current_app.config.get(
         'OPEN_SEARCH_INDEX'), body=query)
     return resp
