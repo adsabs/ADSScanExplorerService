@@ -11,7 +11,7 @@ def create_query_string_query(query_string: str):
                 "query": query_string,
                 "fields": ["article_bibcodes", "journal", "volume_id_lowercase", "volume"],
                 "default_operator": "AND", 
-                "lowercase_expanded_terms": True
+                "case_insensitive": True
             }
         } 
     }
