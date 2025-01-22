@@ -4,21 +4,30 @@ from flask import current_app
 from scan_explorer_service.utils.search_utils import EsFields, OrderOptions
 
 def create_query_string_query(query_string: str):
-    
-    query =  {
+    # Convert the query string to lowercase here if necessary
+    query_string = query_string.lower()
+
+    query = {
         "query": {
-            "query_string": {
-                "query": query_string,
-                "fields": ["article_bibcodes", "journal", "volume_id_lowercase", "volume"],
-                "default_operator": "AND", 
-                "case_insensitive": True
+            "bool": {
+                "must": {
+                    "multi_match": {
+                        "query": query_string,
+                        "fields": [
+                            "article_bibcodes", 
+                            "journal", 
+                            "volume_id_lowercase",  # Ensure this field is mapped to lowercase
+                            "volume"
+                        ],
+                        "operator": "and"  # Ensures all terms must be present in the document
+                    }
+                }
             }
-        } 
+        }
     }
 
     current_app.logger.debug(f"query string: {query}")
     return query
-
 def append_aggregate(query: dict, agg_field: EsFields, page: int, size: int, sort: OrderOptions):
     from_number = (page - 1) * size
     query['size'] = 0
