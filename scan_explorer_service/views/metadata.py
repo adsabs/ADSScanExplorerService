@@ -15,18 +15,23 @@ bp_metadata = Blueprint('metadata', __name__, url_prefix='/metadata')
 @bp_metadata.route('/article/extra/<string:bibcode>', methods=['GET'])
 def article_extra(bibcode: str):
     """Route that fetches additional metadata about an article from the ADS search service """
-
+    current_app.logger.debug('Getting article metadata...') 
 
     auth_token = current_app.config.get('ADS_SEARCH_SERVICE_TOKEN')
+    current_app.logger.debug(f'auth_token: {auth_token}')
     ads_search_service = current_app.config.get('ADS_SEARCH_SERVICE_URL')
+    current_app.logger.debug(f'ads_search_service: {auth_token}') 
     
     if auth_token and ads_search_service:
         try:
-            params = {'q': f'bibcode:{bibcode}', 'fl':'title,author'}   
+            params = {'q': f'bibcode:{bibcode}', 'fl':'title,author'} 
+            current_app.logger.debug(f'Params: {params}')   
             headers = {'Authorization': f'Bearer {auth_token}'}
+            current_app.logger.debug(f'Headers: {headers}')   
             response = requests.get(ads_search_service, params, headers=headers).json()
+            current_app.logger.debug(f'Response: {response}')  
             docs = response.get('response').get('docs')
-
+            current_app.logger.debug(f'Docs: {docs}') 
             if docs:
                 return docs[0]
         except:
