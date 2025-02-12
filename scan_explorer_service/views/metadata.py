@@ -30,10 +30,17 @@ def article_extra(bibcode: str):
             current_app.logger.debug(f'Headers: {headers}')   
             response = requests.get(ads_search_service, params, headers=headers).json()
             current_app.logger.debug(f'Response: {response}')  
+            
+
+            if response.status_code == 429: 
+                return jsonify(message='Rate limit exceeded', error=response), 429
+            
             docs = response.get('response').get('docs')
             current_app.logger.debug(f'Docs: {docs}') 
             if docs:
                 return docs[0]
+            else: 
+                return jsonify(message='No article found'), 404
         except:
             return jsonify(message='Failed to retrieve external ADS article metadata'), 500
         
