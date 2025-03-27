@@ -4,8 +4,6 @@ import shlex
 import enum
 import re
 
-from flask import current_app
-
 class SearchOptions(enum.Enum):
     """Available Search Options"""
     Bibcode = 'bibcode'

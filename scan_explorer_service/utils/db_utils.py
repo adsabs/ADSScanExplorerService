@@ -1,6 +1,5 @@
 from sqlalchemy import or_
 from scan_explorer_service.models import Article, Collection, Page
-from flask import current_app
 
 
 def collection_exists(session, journal, volume):

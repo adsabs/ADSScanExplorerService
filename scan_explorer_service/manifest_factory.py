@@ -3,7 +3,6 @@ from iiif_prezi.factory import ManifestFactory, Sequence, Canvas, Image, Annotat
 from scan_explorer_service.models import Article, Page, Collection
 from typing import Union
 from itertools import chain
-from flask import current_app
 
 class ManifestFactoryExtended(ManifestFactory):
     """ Extended manifest factory.
