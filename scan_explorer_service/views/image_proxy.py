@@ -11,8 +11,6 @@ from scan_explorer_service.utils.s3_utils import S3Provider
 from scan_explorer_service.utils.utils import url_for_proxy
 import re
 import io 
-import cProfile
-import pstats
 import sys
 
 bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
@@ -29,14 +27,8 @@ def image_proxy(path):
     req_headers['X-Forwarded-Path'] = current_app.config.get('PROXY_PREFIX').rstrip('/') + '/image'
 
     encoded_url = re.sub(r"[+&]", "%2B", req_url)
-    
-    current_app.logger.debug(f'req_url: {encoded_url}, params: {request.args}, headers: {req_headers}, data: {request.form}')
-
     r = requests.request(request.method, encoded_url, params=request.args, stream=True,
-                         headers=req_headers, allow_redirects=False, data=request.form)
-    
-    current_app.logger.debug(f"Response status code: {r.status_code}")
-    
+                         headers=req_headers, allow_redirects=False, data=request.form)      
     excluded_headers = ['content-encoding','content-length', 'transfer-encoding', 'connection']
     headers = [(name, value) for (name, value) in r.headers.items() if name.lower() not in excluded_headers]
 
@@ -53,23 +45,15 @@ def image_proxy_thumbnail():
     """Helper to generate the correct url for a thumbnail given an ID and type"""
     try:
         id = request.args.get('id').replace(" ", "+")
-        current_app.logger.debug(f'id {id}')
         type = request.args.get('type')
-        current_app.logger.debug(f'type {type}')
 
         with current_app.session_scope() as session:
-            thumbnail_path = item_thumbnail(session, id, type)
-            
-            current_app.logger.debug(f'thumbnail path {thumbnail_path}')
-            
+            thumbnail_path = item_thumbnail(session, id, type)              
             path = urlparse.urlparse(thumbnail_path).path
-            current_app.logger.debug(f'path {path}')
             
             remove = urlparse.urlparse(url_for_proxy('proxy.image_proxy', path='')).path
-            current_app.logger.debug(f'remove {remove}')
             
             path = path.replace(remove, '')
-            current_app.logger.debug(f'replace {path}')
             
             return image_proxy(path)
     except Exception as e:
@@ -81,10 +65,8 @@ def get_item(session, id):
                 session.query(Article).filter(Article.id == id).one_or_none()
                 or session.query(Collection).filter(Collection.id == id).one_or_none())
     if not item: 
-        current_app.logger.debug(f'Item with id {id} not found')
         raise Exception("ID: " + id + " not found")
     
-    current_app.logger.debug(f'Item retrieved successfully {item}')
     return item 
 
 
@@ -98,7 +80,6 @@ def get_pages(item, session, page_start, page_end, page_limit):
         query = session.query(Page).filter(Page.collection_id == item.id, 
             Page.volume_running_page_num >= page_start, 
             Page.volume_running_page_num <= page_end).order_by(Page.volume_running_page_num).limit(page_limit)
-    current_app.logger.info(f"Got pages {page_start}-{page_end}: {query}") 
     return query 
 
 
@@ -112,7 +93,6 @@ def fetch_images(session, item, page_start, page_end, page_limit, memory_limit):
         n_pages += 1
         
         current_app.logger.debug(f"Generating image for page: {n_pages}") 
-        current_app.logger.debug(f'Id: {page.id}, Volume_page: {page.volume_running_page_num}, memory: {memory_sum}')
         if n_pages > page_limit:
             break
         if memory_sum > memory_limit:
@@ -122,7 +102,6 @@ def fetch_images(session, item, page_start, page_end, page_limit, memory_limit):
         object_name = '/'.join(image_path)
         object_name += format
 
-        current_app.logger.debug(f"Image path: {object_name}")
         im_data = fetch_object(object_name, 'AWS_BUCKET_NAME_IMAGE')
         memory_sum += sys.getsizeof(im_data)
 
@@ -130,29 +109,21 @@ def fetch_images(session, item, page_start, page_end, page_limit, memory_limit):
 
 
 def fetch_object(object_name, bucket_name):
-    current_app.logger.debug(f"Using bucket: {bucket_name}")
     file_content = S3Provider(current_app.config, bucket_name).read_object_s3(object_name)
-    current_app.logger.debug(f"File content type: {type(file_content)}, length: {len(file_content) if file_content else 'None'}")
     if not file_content:
         current_app.logger.error(f"Failed to fetch content for {object_name}. File might be empty.")
         raise ValueError(f"File content is empty for {object_name}")
-    current_app.logger.debug(f"Successfully fetched object from S3 bucket: {object_name}")
    
     return file_content
 
 
 def fetch_article(item, memory_limit):
     try:
-        current_app.logger.debug(f"Item is an article: {item.id}")
-
         object_name = f'{item.id}.pdf'.lower()
-        current_app.logger.debug(f"object name: {object_name}")
 
         full_path = f'pdfs/{object_name}'
-        current_app.logger.debug(f"full path: {full_path}")
 
         file_content = fetch_object(full_path, 'AWS_BUCKET_NAME_PDF')
-        current_app.logger.debug(f"File content type in fetch_article: {type(file_content)}, length: {len(file_content) if file_content else 'None'}")
 
         if len(file_content) > memory_limit:
             current_app.logger.error(f"Memory limit reached: {len(file_content)} > {memory_limit}") 
@@ -173,8 +144,6 @@ def fetch_article(item, memory_limit):
 def generate_pdf(item, session, page_start, page_end, page_limit, memory_limit): 
     if isinstance(item, Article):
         response = fetch_article(item, memory_limit)
-        current_app.logger.debug(f"Item is an article")
-        current_app.logger.debug(f"response fetch article: {response}")
         if response:
             return response
         else:
@@ -189,17 +158,11 @@ def generate_pdf(item, session, page_start, page_end, page_limit, memory_limit):
 def pdf_save():
     """Generate a PDF from pages"""
     try:
-        profiler = cProfile.Profile()
-        profiler.enable()
-        
-
         id = request.args.get('id')
         page_start = request.args.get('page_start', 1, int)
         page_end = request.args.get('page_end', math.inf, int)
         memory_limit = current_app.config.get("IMAGE_PDF_MEMORY_LIMIT")
         page_limit = current_app.config.get("IMAGE_PDF_PAGE_LIMIT")
-
-        current_app.logger.debug(f"pdf ID: {id}, page_start: {page_start}, page_end: {page_end}, memory_limit: {memory_limit}, page_limit: {page_limit}")
 
         with current_app.session_scope() as session:
             
@@ -207,20 +170,6 @@ def pdf_save():
             current_app.logger.debug(f"Item retrieved successfully: {item.id}")
 
             response = generate_pdf(item, session, page_start, page_end, page_limit, memory_limit)
-            current_app.logger.debug(f"Response pdf save: {response}")
-
-            profiler.disable()
-            
-            # Log the profiling information
-            log_buffer = io.StringIO()
-            profiler_stats = pstats.Stats(profiler, stream=log_buffer)
-            profiler_stats.strip_dirs().sort_stats('cumulative', 'calls').print_stats(20)
- 
-            formatted_stats = log_buffer.getvalue().splitlines()
-
-            current_app.logger.debug(f'==================Profiling information========================: \n')
-            for line in formatted_stats:
-                current_app.logger.debug(line)
 
             return response 
     except Exception as e:

@@ -15,32 +15,22 @@ bp_metadata = Blueprint('metadata', __name__, url_prefix='/metadata')
 @bp_metadata.route('/article/extra/<string:bibcode>', methods=['GET'])
 def article_extra(bibcode: str):
     """Route that fetches additional metadata about an article from the ADS search service """
-    current_app.logger.debug('Getting article metadata...') 
 
     auth_token = current_app.config.get('ADS_SEARCH_SERVICE_TOKEN')
-    current_app.logger.debug(f'auth_token: {auth_token}')
     ads_search_service = current_app.config.get('ADS_SEARCH_SERVICE_URL')
-    current_app.logger.debug(f'ads_search_service: {auth_token}') 
     
     if auth_token and ads_search_service:
         try:
             params = {'q': f'bibcode:{bibcode}', 'fl':'title,author'} 
-            current_app.logger.debug(f'Params: {params}')   
             headers = {'Authorization': f'Bearer {auth_token}'}
-            current_app.logger.debug(f'Headers: {headers}')   
             response = requests.get(ads_search_service, params, headers=headers).json()
-            current_app.logger.debug(f'Response: {response}')  
             
             docs = response.get('response').get('docs')
-            current_app.logger.debug(f'Docs: {docs}') 
             if docs:
-                current_app.logger.debug(f'Doc found: {docs[0]}') 
                 return docs[0]
             else: 
-                current_app.logger.error(f'No article found') 
                 return jsonify(message='No article found'), 404
         except Exception as e:
-            current_app.logger.error(f'500 error: {e}') 
             return jsonify(message='Failed to retrieve external ADS article metadata'), 500
     
     return {}
@@ -139,26 +129,20 @@ def article_search():
     """Search for an article using one or some of the available keywords"""
     try:
         qs, qs_dict, page, limit, sort = parse_query_args(request.args)
-        current_app.logger.debug(f'qs: {qs}, qs_dict: {qs_dict}, page: {page}, limit: {limit}, sort: {sort}')
         result = aggregate_search(qs, EsFields.article_id, page, limit, sort)
-        current_app.logger.debug(f'result: {result}')
         text_query = ''
         if SearchOptions.FullText.value in qs_dict.keys():
             text_query = qs_dict[SearchOptions.FullText.value]
-            current_app.logger.debug(f'text_query: {text_query}')
 
         article_count = result['aggregations']['total_count']['value']
-        current_app.logger.debug(f'article_count: {article_count}')
 
         collection_count = page_count = 0
         if article_count == 0:
             collection_count = aggregate_search(qs, EsFields.volume_id, page, limit, sort)['aggregations']['total_count']['value']
-            current_app.logger.debug(f'collection_count: {collection_count}')
             page_count = page_os_search(qs, page, limit, sort)['hits']['total']['value']
-            current_app.logger.debug(f'page_count: {collection_count}')
         return jsonify(serialize_os_article_result(result, page, limit, text_query, collection_count, page_count))
     except Exception as e:
-        current_app.logger.error(f"An exception has occurred: {e}")
+        current_app.logger.exception(f"An exception has occurred: {e}")
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
 
 

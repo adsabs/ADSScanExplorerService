@@ -22,7 +22,6 @@ class ManifestFactoryExtended(ManifestFactory):
         for range in self.create_range(item):
             manifest.add_range(range)
 
-        current_app.logger.debug(f"Created manifest {manifest}")
         return manifest
 
     def create_sequence(self, item: Union[Article, Collection]):
@@ -30,7 +29,6 @@ class ManifestFactoryExtended(ManifestFactory):
         for page in item.pages:
             sequence.add_canvas(self.get_or_create_canvas(page)) 
 
-        current_app.logger.debug(f"Sequence {sequence}")
         return sequence
 
     def create_range(self, item: Union[Article, Collection]):
@@ -41,13 +39,11 @@ class ManifestFactoryExtended(ManifestFactory):
         for page in item.pages:
             range.add_canvas(self.get_or_create_canvas(page))
 
-        current_app.logger.debug(f"Range {[range]}")
         return [range]
 
     def get_canvas_dict(self) -> Dict[str, Canvas]:
         if not hasattr(self, 'canvas_dict'):
             self.canvas_dict = {}
-        current_app.logger.debug(f"Canvas dict {self.canvas_dict}")
         return self.canvas_dict
 
     def get_or_create_canvas(self, page: Page):
@@ -68,7 +64,6 @@ class ManifestFactoryExtended(ManifestFactory):
         annotation.on = canvas.id
         canvas.add_annotation(annotation)
         canvas_dict[page.id] = canvas
-        current_app.logger.debug(f"Canvas {canvas}")
         return canvas
 
     def create_image_annotation(self, page: Page):
@@ -82,7 +77,6 @@ class ManifestFactoryExtended(ManifestFactory):
         image.format = page.format
         image.height = page.height
         image.width = page.width
-        current_app.logger.debug(f"Annotation {annotation}")
         return annotation
 
     def add_search_service(self, manifest: Manifest, search_url: str):

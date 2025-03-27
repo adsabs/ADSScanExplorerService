@@ -74,7 +74,6 @@ def append_highlight(query: dict):
 
 def es_search(query: dict) -> Iterator[str]:
     es = opensearchpy.OpenSearch(current_app.config.get('OPEN_SEARCH_URL'))
-    current_app.logger.debug(f"Query search: {query}")
     resp = es.search(index=current_app.config.get(
         'OPEN_SEARCH_INDEX'), body=query)
     return resp
@@ -150,9 +149,6 @@ def page_ocr_os_search(collection_id: str, page_number:int):
 def aggregate_search(qs: str, aggregate_field, page, limit, sort):
     qs = qs.replace("&", "+")
     query = create_query_string_query(qs)
-    current_app.logger.debug(f"query: {query}")
     query = append_aggregate(query, aggregate_field, page, limit, sort)
-    current_app.logger.debug(f"query with aggregate: {query}")
     es_result = es_search(query)
-    current_app.logger.debug(f"es_result: {es_result}")
     return es_result

@@ -80,22 +80,18 @@ def page_overwrite(session, page):
 def article_thumbnail(session, id):
     page = session.query(Page).join(Article, Page.articles).filter(
                 Article.id == id).order_by(Page.volume_running_page_num.asc()).first()
-    current_app.logger.debug(f'article thumbnail {page}')
     return page.thumbnail_url
 
 def collection_thumbnail(session, id):
     page = session.query(Page).filter(Page.collection_id == id).order_by(
         Page.volume_running_page_num.asc()).first()
-    current_app.logger.debug(f'collection thumbnail {page.thumbnail_url}')
     return page.thumbnail_url
 
 def page_thumbnail(session, id):
     page = session.query(Page).filter(Page.id == id).one()
-    current_app.logger.debug(f'page thumbnail {page.thumbnail_url}')
     return page.thumbnail_url
 
 def item_thumbnail(session, id, type):
-    current_app.logger.debug(f'Getting item thumbnail: id {id} type {type}')
     if type == 'page':
         return page_thumbnail(session, id)
     elif type == 'article':
