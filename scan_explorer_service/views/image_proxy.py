@@ -46,9 +46,8 @@ def image_proxy_thumbnail():
     try:
         id = request.args.get('id').replace(" ", "+")
         type = request.args.get('type')
-
         with current_app.session_scope() as session:
-            thumbnail_path = item_thumbnail(session, id, type)              
+            thumbnail_path = item_thumbnail(session, id, type)
             path = urlparse.urlparse(thumbnail_path).path
             
             remove = urlparse.urlparse(url_for_proxy('proxy.image_proxy', path='')).path
@@ -113,16 +112,13 @@ def fetch_object(object_name, bucket_name):
     if not file_content:
         current_app.logger.error(f"Failed to fetch content for {object_name}. File might be empty.")
         raise ValueError(f"File content is empty for {object_name}")
-   
     return file_content
 
 
 def fetch_article(item, memory_limit):
     try:
         object_name = f'{item.id}.pdf'.lower()
-
         full_path = f'pdfs/{object_name}'
-
         file_content = fetch_object(full_path, 'AWS_BUCKET_NAME_PDF')
 
         if len(file_content) > memory_limit:
@@ -130,7 +126,6 @@ def fetch_article(item, memory_limit):
 
         file_stream = io.BytesIO(file_content)
         file_stream.seek(0)
-
         return send_file(
             file_stream,
             as_attachment=True,
@@ -170,7 +165,6 @@ def pdf_save():
             current_app.logger.debug(f"Item retrieved successfully: {item.id}")
 
             response = generate_pdf(item, session, page_start, page_end, page_limit, memory_limit)
-
             return response 
     except Exception as e:
         return jsonify(Message=str(e)), 400    

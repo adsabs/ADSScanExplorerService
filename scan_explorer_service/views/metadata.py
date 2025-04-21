@@ -16,6 +16,7 @@ bp_metadata = Blueprint('metadata', __name__, url_prefix='/metadata')
 def article_extra(bibcode: str):
     """Route that fetches additional metadata about an article from the ADS search service """
 
+
     auth_token = current_app.config.get('ADS_SEARCH_SERVICE_TOKEN')
     ads_search_service = current_app.config.get('ADS_SEARCH_SERVICE_URL')
     
@@ -24,7 +25,6 @@ def article_extra(bibcode: str):
             params = {'q': f'bibcode:{bibcode}', 'fl':'title,author'} 
             headers = {'Authorization': f'Bearer {auth_token}'}
             response = requests.get(ads_search_service, params, headers=headers).json()
-            
             docs = response.get('response').get('docs')
             if docs:
                 return docs[0]
@@ -32,7 +32,6 @@ def article_extra(bibcode: str):
                 return jsonify(message='No article found'), 404
         except Exception as e:
             return jsonify(message='Failed to retrieve external ADS article metadata'), 500
-    
     return {}
 
 @advertise(scopes=['api'], rate_limit=[300, 3600*24])
@@ -135,7 +134,6 @@ def article_search():
             text_query = qs_dict[SearchOptions.FullText.value]
 
         article_count = result['aggregations']['total_count']['value']
-
         collection_count = page_count = 0
         if article_count == 0:
             collection_count = aggregate_search(qs, EsFields.volume_id, page, limit, sort)['aggregations']['total_count']['value']
@@ -170,7 +168,6 @@ def page_search():
         text_query = ''
         if SearchOptions.FullText.value in qs_dict.keys():
             text_query = qs_dict[SearchOptions.FullText.value]
-
         return jsonify(serialize_os_page_result(result, page, limit, text_query))
     except Exception as e:
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400

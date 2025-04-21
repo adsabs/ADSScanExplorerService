@@ -92,7 +92,6 @@ class TestMetadata(TestCaseDatabase):
         self.assertEqual(expected_query, call_kwargs.get('body'))
         self.assertStatus(r, 200)
         expected_response = {"extra_collection_count": 0, "extra_page_count": 0,  "items": [{"bibcode": self.article.bibcode, "id": self.article.id, "pages": 3 }], "limit": 10, "page": 1, "pageCount": 1, "query": "",  "total": 1}
-        
         self.assertEqual(r.data, jsonify(expected_response).data)
 
     @patch('opensearchpy.OpenSearch')

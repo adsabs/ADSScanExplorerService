@@ -4,7 +4,6 @@ from flask import current_app
 from scan_explorer_service.utils.search_utils import EsFields, OrderOptions
 
 def create_query_string_query(query_string: str):
-    
     query =  {
         "query": {
             "query_string": {
@@ -12,10 +11,8 @@ def create_query_string_query(query_string: str):
                 "fields": ["article_bibcodes", "journal", "volume_id_lowercase", "volume"],
                 "default_operator": "AND"
             }
-        } 
+        }
     }
-
-    current_app.logger.debug(f"query string: {query}")
     return query
 
 def append_aggregate(query: dict, agg_field: EsFields, page: int, size: int, sort: OrderOptions):
