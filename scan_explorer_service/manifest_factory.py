@@ -14,20 +14,16 @@ class ManifestFactoryExtended(ManifestFactory):
     def create_manifest(self, item: Union[Article, Collection]):
         manifest = self.manifest(
             ident=f'{item.id}/manifest.json', label=item.id)
-        
         manifest.description = item.id
         manifest.add_sequence(self.create_sequence(item))
-        
         for range in self.create_range(item):
             manifest.add_range(range)
-
         return manifest
 
     def create_sequence(self, item: Union[Article, Collection]):
         sequence: Sequence = self.sequence()
         for page in item.pages:
             sequence.add_canvas(self.get_or_create_canvas(page)) 
-
         return sequence
 
     def create_range(self, item: Union[Article, Collection]):
@@ -37,7 +33,6 @@ class ManifestFactoryExtended(ManifestFactory):
         range: Range = self.range(ident=item.bibcode, label=item.bibcode)
         for page in item.pages:
             range.add_canvas(self.get_or_create_canvas(page))
-
         return [range]
 
     def get_canvas_dict(self) -> Dict[str, Canvas]:
