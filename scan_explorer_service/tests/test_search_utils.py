@@ -37,6 +37,12 @@ class TestSearchUtils(TestCaseDatabase):
         final_query, _ = parse_query_string('PageColor:grAYsCaLe')
         self.assertEqual(final_query, 'page_color:Grayscale')
 
+        final_query, _ = parse_query_string('PageColor:BW')
+        self.assertEqual(final_query, 'page_color:BW')
+
+        final_query, _ = parse_query_string('PageColor:cOlor')
+        self.assertEqual(final_query, 'page_color:Color')
+
 
 if __name__ == '__main__':
     unittest.main()

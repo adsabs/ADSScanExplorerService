@@ -22,17 +22,16 @@ def article_extra(bibcode: str):
     
     if auth_token and ads_search_service:
         try:
-            params = {'q': f'bibcode:{bibcode}', 'fl':'title,author'}   
+            params = {'q': f'bibcode:{bibcode}', 'fl':'title,author'} 
             headers = {'Authorization': f'Bearer {auth_token}'}
             response = requests.get(ads_search_service, params, headers=headers).json()
             docs = response.get('response').get('docs')
-
             if docs:
                 return docs[0]
-        except:
+            else: 
+                return jsonify(message='No article found'), 404
+        except Exception as e:
             return jsonify(message='Failed to retrieve external ADS article metadata'), 500
-        
-        
     return {}
 
 @advertise(scopes=['api'], rate_limit=[300, 3600*24])
@@ -141,7 +140,7 @@ def article_search():
             page_count = page_os_search(qs, page, limit, sort)['hits']['total']['value']
         return jsonify(serialize_os_article_result(result, page, limit, text_query, collection_count, page_count))
     except Exception as e:
-        current_app.logger.error(f"{e}")
+        current_app.logger.exception(f"An exception has occurred: {e}")
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
 
 

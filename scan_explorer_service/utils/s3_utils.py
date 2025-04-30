@@ -24,7 +24,7 @@ class S3Provider:
         try:
             response = self.bucket.put_object(Body=file_bytes, Key=object_name)
         except (ClientError, ParamValidationError) as e:
-            current_app.logger.info.exception(e)
+            current_app.logger.exception(f"Error writing object {object_name}: {str(e)}")
             raise e
         return response.e_tag
 
@@ -35,8 +35,8 @@ class S3Provider:
                 s3_obj.seek(0)
                 s3_file = s3_obj.read()
                 return s3_file
-        except (ClientError, ParamValidationError) as e:
-            current_app.logger.exception(e)
-            raise e
+        except Exception as e:
+            current_app.logger.exception(f"Unexpected error reading object {object_name}: {str(e)}")
+            raise
 
 

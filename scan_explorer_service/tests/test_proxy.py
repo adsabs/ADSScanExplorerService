@@ -167,7 +167,6 @@ class TestProxy(TestCaseDatabase):
 
     @patch('scan_explorer_service.views.image_proxy.fetch_object')
     def test_pdf_save_success_article(self, mock_fetch_object):
-        # mock_read_object_s3.return_value = b'my_image_name'
         mock_fetch_object.return_value = b'my_image_name'
 
         data = {

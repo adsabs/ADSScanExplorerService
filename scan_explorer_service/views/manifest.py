@@ -35,7 +35,7 @@ def get_manifest(id: str):
             manifest = manifest_factory.create_manifest(item)
             search_url = url_for_proxy('manifest.search', id=id)
             manifest_factory.add_search_service(manifest, search_url)
-
+            
             return manifest.toJSON(top=True)
         else:
             return jsonify(exception='Article not found'), 404

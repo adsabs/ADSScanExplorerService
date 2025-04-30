@@ -58,7 +58,6 @@ class ManifestFactoryExtended(ManifestFactory):
         annotation.on = canvas.id
         canvas.add_annotation(annotation)
         canvas_dict[page.id] = canvas
-
         return canvas
 
     def create_image_annotation(self, page: Page):
