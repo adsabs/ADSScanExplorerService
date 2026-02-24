@@ -3,6 +3,7 @@ from typing import Union
 from flask import Blueprint, current_app, jsonify, request
 from scan_explorer_service.utils.db_utils import article_get_or_create, article_overwrite, collection_overwrite, page_get_or_create, page_overwrite
 from scan_explorer_service.models import Article, Collection, Page, page_article_association_table
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from flask_discoverer import advertise
 from scan_explorer_service.utils.search_utils import *
 from scan_explorer_service.views.view_utils import ApiErrors
@@ -119,7 +120,9 @@ def put_collection():
                 if pages_data:
                     session.bulk_insert_mappings(Page, pages_data)
                 if articles_data:
-                    session.bulk_insert_mappings(Article, list(articles_data.values()))
+                    session.execute(
+                        pg_insert(Article.__table__).values(list(articles_data.values())).on_conflict_do_nothing()
+                    )
                 if page_article_data:
                     session.execute(page_article_association_table.insert(), page_article_data)
                 session.commit()
