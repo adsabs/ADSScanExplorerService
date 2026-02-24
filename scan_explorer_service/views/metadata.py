@@ -1,7 +1,9 @@
+from datetime import datetime, timezone
 from typing import Union
 from flask import Blueprint, current_app, jsonify, request
 from scan_explorer_service.utils.db_utils import article_get_or_create, article_overwrite, collection_overwrite, page_get_or_create, page_overwrite
-from scan_explorer_service.models import Article, Collection, Page
+from scan_explorer_service.models import Article, Collection, Page, page_article_association_table
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from flask_discoverer import advertise
 from scan_explorer_service.utils.search_utils import *
 from scan_explorer_service.views.view_utils import ApiErrors
@@ -76,16 +78,53 @@ def put_collection():
             try:
                 collection = Collection(**json)
                 collection_overwrite(session, collection)
-                
+
+                now = datetime.now(timezone.utc).replace(tzinfo=None)
+                pages_data = []
+                articles_data = {}
+                page_article_data = []
+
                 for page_json in json.get('pages', []):
                     page_json['collection_id'] = collection.id
-                    page = page_get_or_create(session, **page_json)
+                    articles = page_json.pop('articles', [])
+                    page = Page(**page_json)
+                    pages_data.append({
+                        'id': page.id,
+                        'name': page.name,
+                        'label': page.label,
+                        'format': page.format,
+                        'color_type': page.color_type,
+                        'page_type': page.page_type,
+                        'width': page.width,
+                        'height': page.height,
+                        'collection_id': page.collection_id,
+                        'volume_running_page_num': page.volume_running_page_num,
+                        'created': now,
+                        'updated': now,
+                    })
+                    for article_json in articles:
+                        bibcode = article_json['bibcode']
+                        if bibcode not in articles_data:
+                            articles_data[bibcode] = {
+                                'id': bibcode,
+                                'bibcode': bibcode,
+                                'collection_id': collection.id,
+                                'created': now,
+                                'updated': now,
+                            }
+                        page_article_data.append({
+                            'page_id': page.id,
+                            'article_id': bibcode,
+                        })
 
-                    for article_json in page_json.get('articles', []):
-                        article_json['collection_id'] = collection.id
-                        page.articles.append(article_get_or_create(session, **article_json))
-
-                    session.add(page)
+                if pages_data:
+                    session.bulk_insert_mappings(Page, pages_data)
+                if articles_data:
+                    session.execute(
+                        pg_insert(Article.__table__).values(list(articles_data.values())).on_conflict_do_nothing()
+                    )
+                if page_article_data:
+                    session.execute(page_article_association_table.insert(), page_article_data)
                 session.commit()
 
                 return jsonify({'id': collection.id}), 200

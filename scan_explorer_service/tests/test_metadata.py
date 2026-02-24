@@ -205,6 +205,82 @@ class TestMetadata(TestCaseDatabase):
         self.assertStatus(r, 200)
         self.assertEqual(data, {'id': 'journalvolume', 'selected_page': 100})
 
+    def test_put_collection_with_articles(self):
+        """put_collection bulk-inserts articles and links them to pages."""
+        collection_json = {
+            'type': 'type',
+            'journal': self.collection.journal,
+            'volume': self.collection.volume,
+            'pages': [{
+                'name': 'pageA',
+                'color_type': 'BW',
+                'page_type': 'Normal',
+                'label': '1',
+                'width': 100,
+                'height': 100,
+                'volume_running_page_num': 1,
+                'articles': [{'bibcode': '2000ApJ...001..001A'}],
+            }]
+        }
+        url = url_for("metadata.put_collection")
+        r = self.client.put(url, json=collection_json)
+        self.assertStatus(r, 200)
+
+        collection_id = r.get_json()['id']
+        articles = self.app.db.session.query(Article).filter(Article.collection_id == collection_id).all()
+        self.assertEqual(len(articles), 1)
+        self.assertEqual(articles[0].bibcode, '2000ApJ...001..001A')
+
+        pages = self.app.db.session.query(Page).filter(Page.collection_id == collection_id).all()
+        self.assertEqual(len(pages), 1)
+
+    def test_put_collection_deduplicates_articles(self):
+        """An article appearing in multiple pages is inserted only once."""
+        collection_json = {
+            'type': 'type',
+            'journal': self.collection.journal,
+            'volume': self.collection.volume,
+            'pages': [
+                {
+                    'name': 'pageA',
+                    'color_type': 'BW',
+                    'page_type': 'Normal',
+                    'label': '1',
+                    'width': 100,
+                    'height': 100,
+                    'volume_running_page_num': 1,
+                    'articles': [{'bibcode': '2000ApJ...001..001A'}],
+                },
+                {
+                    'name': 'pageB',
+                    'color_type': 'BW',
+                    'page_type': 'Normal',
+                    'label': '2',
+                    'width': 100,
+                    'height': 100,
+                    'volume_running_page_num': 2,
+                    'articles': [{'bibcode': '2000ApJ...001..001A'}],
+                },
+            ]
+        }
+        url = url_for("metadata.put_collection")
+        r = self.client.put(url, json=collection_json)
+        self.assertStatus(r, 200)
+
+        collection_id = r.get_json()['id']
+        articles = self.app.db.session.query(Article).filter(Article.collection_id == collection_id).all()
+        self.assertEqual(len(articles), 1)
+
+        pages = self.app.db.session.query(Page).filter(Page.collection_id == collection_id).all()
+        self.assertEqual(len(pages), 2)
+
+        from scan_explorer_service.models import page_article_association_table as pat
+        page_ids = [p.id for p in pages]
+        links = self.app.db.session.execute(
+            pat.select().where(pat.c.page_id.in_(page_ids))
+        ).fetchall()
+        self.assertEqual(len(links), 2)
+
 
 if __name__ == '__main__':
     unittest.main()
