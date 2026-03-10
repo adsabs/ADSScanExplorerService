@@ -64,13 +64,14 @@ class Collection(Base, Timestamp):
     @property
     def serialized(self):
         """Return object data in serializeable format"""
+        first_page = self.pages.first()
         return {
             'id': self.id,
             'type': 'collection',
             'journal': self.journal,
             'volume': self.volume,
             'pages': self.pages.count(),
-            'thumbnail': self.pages.first().thumbnail_url
+            'thumbnail': first_page.thumbnail_url if first_page else None
         }
 
 
@@ -103,12 +104,13 @@ class Article(Base, Timestamp):
     @property
     def serialized(self):
         """Return object data in serializeable format"""
+        first_page = self.pages.first()
         return {
             'id': self.id,
             'type': 'article',
             'bibcode': self.bibcode,
             'pages': self.pages.count(),
-            'thumbnail': self.pages.first().thumbnail_url,
+            'thumbnail': first_page.thumbnail_url if first_page else None,
             'collection_id': self.collection_id
         }
 
@@ -156,11 +158,11 @@ class Page(Base, Timestamp):
     @property
     def image_path(self):
         separator = current_app.config.get('IMAGE_API_SLASH_SUB', '%2F')
-        image_path = separator.join(self.image_path_basic[0]) 
+        image_path = separator.join(self.image_path_basic[0])
         if self.color_type != PageColor.BW:
             image_path += '.tif'
-        return image_path 
-    
+        return image_path
+
     @property
     def image_path_basic(self):
         image_format = ''

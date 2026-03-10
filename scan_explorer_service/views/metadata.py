@@ -21,16 +21,16 @@ def article_extra(bibcode: str):
 
     auth_token = current_app.config.get('ADS_SEARCH_SERVICE_TOKEN')
     ads_search_service = current_app.config.get('ADS_SEARCH_SERVICE_URL')
-    
+
     if auth_token and ads_search_service:
         try:
-            params = {'q': f'bibcode:{bibcode}', 'fl':'title,author'} 
+            params = {'q': f'bibcode:{bibcode}', 'fl':'title,author'}
             headers = {'Authorization': f'Bearer {auth_token}'}
             response = requests.get(ads_search_service, params, headers=headers).json()
             docs = response.get('response').get('docs')
             if docs:
                 return docs[0]
-            else: 
+            else:
                 return jsonify(message='No article found'), 404
         except Exception as e:
             return jsonify(message='Failed to retrieve external ADS article metadata'), 500
@@ -42,13 +42,13 @@ def article_collection(bibcode: str):
     """Route that fetches collection from an article """
     with current_app.session_scope() as session:
         article: Article = session.query(Article).filter(Article.bibcode == bibcode).first()
+        if article is None:
+            return jsonify(message='Invalid article bibcode'), 404
         first_page : Page = article.pages.first()
+        if first_page is None:
+            return jsonify(message='Article has no pages'), 404
         page_in_collection = first_page.volume_running_page_num
-        
-        if article:
-            return jsonify({'id': article.collection_id, 'selected_page': page_in_collection}), 200
-        else:
-            jsonify(message='Invalid article bibcode'), 400
+        return jsonify({'id': article.collection_id, 'selected_page': page_in_collection}), 200
 
 @advertise(scopes=['ads:scan-explorer'], rate_limit=[300, 3600*24])
 @bp_metadata.route('/article', methods=['PUT'])
@@ -124,7 +124,9 @@ def put_collection():
                         pg_insert(Article.__table__).values(list(articles_data.values())).on_conflict_do_nothing()
                     )
                 if page_article_data:
-                    session.execute(page_article_association_table.insert(), page_article_data)
+                    session.execute(
+                        pg_insert(page_article_association_table).values(page_article_data).on_conflict_do_nothing()
+                    )
                 session.commit()
 
                 return jsonify({'id': collection.id}), 200
@@ -225,13 +227,16 @@ def get_page_ocr():
                     or session.query(Collection).filter(Collection.id == id).one_or_none())
 
             if item is None:
-                return jsonify(message=f'Item with ID {id} was not found'), 404 
+                return jsonify(message=f'Item with ID {id} was not found'), 404
             elif isinstance(item, Article):
                 collection_id = item.collection_id
-                page_number = page_number + item.pages.first().volume_running_page_num - 1
+                first_page = item.pages.first()
+                if first_page is None:
+                    return jsonify(message=f'Article {id} has no pages'), 404
+                page_number = page_number + first_page.volume_running_page_num - 1
             elif isinstance(item, Collection):
                 collection_id = item.id
-                
+
             result = page_ocr_os_search(collection_id, page_number)
             return serialize_os_page_ocr_result(result)
 

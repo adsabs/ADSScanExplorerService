@@ -79,11 +79,15 @@ def page_overwrite(session, page):
 def article_thumbnail(session, id):
     page = session.query(Page).join(Article, Page.articles).filter(
                 Article.id == id).order_by(Page.volume_running_page_num.asc()).first()
+    if page is None:
+        raise Exception(f"No pages found for article {id}")
     return page.thumbnail_url
 
 def collection_thumbnail(session, id):
     page = session.query(Page).filter(Page.collection_id == id).order_by(
         Page.volume_running_page_num.asc()).first()
+    if page is None:
+        raise Exception(f"No pages found for collection {id}")
     return page.thumbnail_url
 
 def page_thumbnail(session, id):
