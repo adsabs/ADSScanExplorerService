@@ -7,11 +7,12 @@ from itertools import chain
 class ManifestFactoryExtended(ManifestFactory):
     """ Extended manifest factory.
 
-    Extension of the iiif_prezi manifest factory with helper 
+    Extension of the iiif_prezi manifest factory with helper
     functions used to create manifest objects from model.
     """
 
     def create_manifest(self, item: Union[Article, Collection]):
+        self.canvas_dict = {}
         manifest = self.manifest(
             ident=f'{item.id}/manifest.json', label=item.id)
         manifest.description = item.id
@@ -20,10 +21,29 @@ class ManifestFactoryExtended(ManifestFactory):
             manifest.add_range(range)
         return manifest
 
+    def create_collection_manifest(self, collection, pages, articles, article_pages):
+        self.canvas_dict = {}
+        manifest = self.manifest(
+            ident=f'{collection.id}/manifest.json', label=collection.id)
+        manifest.description = collection.id
+
+        sequence: Sequence = self.sequence()
+        for page in pages:
+            sequence.add_canvas(self.get_or_create_canvas(page))
+        manifest.add_sequence(sequence)
+
+        for article in articles:
+            range: Range = self.range(ident=article.bibcode, label=article.bibcode)
+            for page in article_pages.get(article.id, []):
+                range.add_canvas(self.get_or_create_canvas(page))
+            manifest.add_range(range)
+
+        return manifest
+
     def create_sequence(self, item: Union[Article, Collection]):
         sequence: Sequence = self.sequence()
         for page in item.pages:
-            sequence.add_canvas(self.get_or_create_canvas(page)) 
+            sequence.add_canvas(self.get_or_create_canvas(page))
         return sequence
 
     def create_range(self, item: Union[Article, Collection]):
@@ -67,7 +87,7 @@ class ManifestFactoryExtended(ManifestFactory):
 
         # Override default image quality and format set by prezi
         image.id = image.id.replace(f'/default.jpg', f'/{page.image_color_quality}.tif')
-      
+
         image.format = page.format
         image.height = page.height
         image.width = page.width
@@ -76,5 +96,5 @@ class ManifestFactoryExtended(ManifestFactory):
     def add_search_service(self, manifest: Manifest, search_url: str):
         context = 'http://iiif.io/api/search/1/context.json'
         profile = 'http://iiif.io/api/search/1/search'
-        
+
         manifest.add_service(ident=search_url, context=context, profile=profile)

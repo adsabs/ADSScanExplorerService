@@ -282,5 +282,79 @@ class TestMetadata(TestCaseDatabase):
         self.assertEqual(len(links), 2)
 
 
+class TestNullPageHandling(TestCaseDatabase):
+    """Tests for S2, S3, S5: null dereference guards when articles/collections have no pages."""
+
+    def create_app(self):
+        from scan_explorer_service.app import create_app
+        return create_app(**{
+            'SQLALCHEMY_DATABASE_URI': self.postgresql_url,
+            'OPEN_SEARCH_URL': 'http://localhost:1234',
+            'OPEN_SEARCH_INDEX': 'test',
+            'SQLALCHEMY_ECHO': False,
+            'TESTING': True,
+            'PROPAGATE_EXCEPTIONS': True,
+            'TRAP_BAD_REQUEST_ERRORS': True,
+            'PRESERVE_CONTEXT_ON_EXCEPTION': False
+        })
+
+    def setUp(self):
+        Base.metadata.drop_all(bind=self.app.db.engine)
+        Base.metadata.create_all(bind=self.app.db.engine)
+
+        self.collection = Collection(type='type', journal='journal', volume='volume')
+        self.app.db.session.add(self.collection)
+        self.app.db.session.commit()
+        self.collection_id = self.collection.id
+
+        self.article = Article(bibcode='2000ApJ...001..001X',
+                               collection_id=self.collection_id)
+        self.app.db.session.add(self.article)
+        self.app.db.session.commit()
+        self.article_bibcode = self.article.bibcode
+        self.article_id = self.article.id
+
+    def test_collection_serialized_no_pages(self):
+        """S3: Collection.serialized returns thumbnail=None when no pages exist."""
+        with self.app.app_context():
+            col = self.app.db.session.query(Collection).get(self.collection_id)
+            data = col.serialized
+            self.assertIsNone(data['thumbnail'])
+            self.assertEqual(data['pages'], 0)
+
+    def test_article_serialized_no_pages(self):
+        """S3: Article.serialized returns thumbnail=None when no pages exist."""
+        with self.app.app_context():
+            art = self.app.db.session.query(Article).get(self.article_id)
+            data = art.serialized
+            self.assertIsNone(data['thumbnail'])
+            self.assertEqual(data['pages'], 0)
+
+    def test_collection_thumbnail_no_pages(self):
+        """S2: collection_thumbnail raises when collection has no pages."""
+        from scan_explorer_service.utils.db_utils import collection_thumbnail
+        with self.app.app_context():
+            with self.assertRaises(Exception) as ctx:
+                collection_thumbnail(self.app.db.session, self.collection_id)
+            self.assertIn('No pages found', str(ctx.exception))
+
+    def test_article_collection_no_pages(self):
+        """S5 (related): article_collection returns 404 when article has no pages."""
+        url = url_for("metadata.article_collection", bibcode=self.article_bibcode)
+        r = self.client.get(url)
+        self.assertStatus(r, 404)
+        data = json.loads(r.data)
+        self.assertIn('no pages', data['message'].lower())
+
+    @patch('opensearchpy.OpenSearch')
+    def test_get_page_ocr_article_no_pages(self, OpenSearch):
+        """S5: get_page_ocr returns 404 when article has no pages."""
+        url = url_for("metadata.get_page_ocr", id=self.article_id)
+        r = self.client.get(url)
+        self.assertStatus(r, 404)
+        data = json.loads(r.data)
+        self.assertIn('no pages', data['message'].lower())
+
+
 if __name__ == '__main__':
     unittest.main()

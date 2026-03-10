@@ -1,4 +1,5 @@
 import unittest
+import json
 from flask import url_for
 from unittest.mock import MagicMock, patch
 from scan_explorer_service.tests.base import TestCaseDatabase
@@ -199,6 +200,154 @@ class TestProxy(TestCaseDatabase):
         self.assertEqual(response.data, b'pdf_data')
 
         mock_img2pdf_convert.assert_called_once_with([b'image_data_1', b'image_data_2', b'image_data_3'])
+
+
+class TestImageProxyRetry(TestCaseDatabase):
+    """Test Cantaloupe cold-cache retry logic in image_proxy."""
+
+    def create_app(self):
+        from scan_explorer_service.app import create_app
+        return create_app(**{
+            'SQLALCHEMY_DATABASE_URI': self.postgresql_url,
+            'SQLALCHEMY_ECHO': False,
+            'TESTING': True,
+            'PROPAGATE_EXCEPTIONS': True,
+            'TRAP_BAD_REQUEST_ERRORS': True,
+            'PRESERVE_CONTEXT_ON_EXCEPTION': False,
+            'IMAGE_PROXY_RETRIES': 1,
+            'IMAGE_PROXY_RETRY_DELAY': 0,
+        })
+
+    def setUp(self):
+        Base.metadata.drop_all(bind=self.app.db.engine)
+        Base.metadata.create_all(bind=self.app.db.engine)
+
+    def _make_mock_response(self, data, status_code, headers=None):
+        class Raw:
+            def __init__(self, d):
+                self.data = d
+            def stream(self, decode_content=False):
+                return self.data
+        class MockResponse:
+            def __init__(self, d, sc, h):
+                self.raw = Raw(d)
+                self.status_code = sc
+                self.headers = h or {}
+        return MockResponse(data, status_code, headers or {})
+
+    @patch('requests.request')
+    def test_retry_on_cold_cache_400(self, mock_request):
+        fail = self._make_mock_response([b'error'], 400)
+        success = self._make_mock_response([b'ok'], 200)
+        mock_request.side_effect = [fail, success]
+
+        url = url_for('proxy.image_proxy', path='some-~image-~path')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mock_request.call_count, 2)
+
+    @patch('requests.request')
+    def test_retry_on_cold_cache_500(self, mock_request):
+        fail = self._make_mock_response([b'error'], 500)
+        success = self._make_mock_response([b'ok'], 200)
+        mock_request.side_effect = [fail, success]
+
+        url = url_for('proxy.image_proxy', path='some-~image-~path')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mock_request.call_count, 2)
+
+    @patch('requests.request')
+    def test_no_retry_on_success(self, mock_request):
+        success = self._make_mock_response([b'ok'], 200)
+        mock_request.return_value = success
+
+        url = url_for('proxy.image_proxy', path='some-~image-~path')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mock_request.call_count, 1)
+
+    @patch('requests.request')
+    def test_returns_error_after_exhausted_retries(self, mock_request):
+        fail = self._make_mock_response([b'error'], 400)
+        mock_request.return_value = fail
+
+        url = url_for('proxy.image_proxy', path='some-~image-~path')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(mock_request.call_count, 2)
+
+
+class TestProxyNullHandling(TestCaseDatabase):
+    """Tests for S4 and S6: null/error handling in image_proxy.py."""
+
+    def create_app(self):
+        from scan_explorer_service.app import create_app
+        return create_app(**{
+            'SQLALCHEMY_DATABASE_URI': self.postgresql_url,
+            'OPEN_SEARCH_URL': 'http://localhost:1234',
+            'OPEN_SEARCH_INDEX': 'test',
+            'SQLALCHEMY_ECHO': False,
+            'TESTING': True,
+            'PROPAGATE_EXCEPTIONS': True,
+            'TRAP_BAD_REQUEST_ERRORS': True,
+            'PRESERVE_CONTEXT_ON_EXCEPTION': False,
+            'IMAGE_PDF_MEMORY_LIMIT': 100 * 1024 * 1024,
+            'IMAGE_PDF_PAGE_LIMIT': 100,
+        })
+
+    def setUp(self):
+        Base.metadata.drop_all(bind=self.app.db.engine)
+        Base.metadata.create_all(bind=self.app.db.engine)
+
+        self.collection = Collection(type='type', journal='journal', volume='volume')
+        self.app.db.session.add(self.collection)
+        self.app.db.session.commit()
+        self.app.db.session.refresh(self.collection)
+
+        self.article_no_pages = Article(bibcode='2000ApJ...001..099Z',
+                                         collection_id=self.collection.id)
+        self.app.db.session.add(self.article_no_pages)
+        self.app.db.session.commit()
+        self.article_no_pages_id = self.article_no_pages.id
+
+    @patch('scan_explorer_service.views.image_proxy.fetch_object')
+    def test_pdf_save_article_no_pages_returns_400(self, mock_fetch_object):
+        """S4: PDF endpoint returns 400 when article has no pages and no pre-built PDF."""
+        mock_fetch_object.side_effect = ValueError("File content is empty")
+
+        response = self.client.get(url_for('proxy.pdf_save', id=self.article_no_pages_id))
+        self.assertEqual(response.status_code, 400)
+        data = json.loads(response.data)
+        self.assertIn('No pages found', data['Message'])
+
+    def test_get_pages_article_no_pages_raises(self):
+        """S4: get_pages raises Exception for article with no pages."""
+        from scan_explorer_service.views.image_proxy import get_pages
+        with self.app.app_context():
+            with self.assertRaises(Exception) as ctx:
+                get_pages(self.article_no_pages, self.app.db.session, 1, 10, 100)
+            self.assertIn('No pages found', str(ctx.exception))
+
+    @patch('scan_explorer_service.views.image_proxy.fetch_object')
+    def test_fetch_article_exception_no_unbound_local(self, mock_fetch_object):
+        """S6: fetch_article logs correctly even when fetch_object raises."""
+        mock_fetch_object.side_effect = ValueError("S3 error")
+        from scan_explorer_service.views.image_proxy import fetch_article
+
+        result = fetch_article(self.article_no_pages, 100 * 1024 * 1024)
+        self.assertIsNone(result)
+
+    @patch('scan_explorer_service.views.image_proxy.fetch_object')
+    def test_thumbnail_empty_collection_returns_400(self, mock_fetch_object):
+        """S2 (HTTP layer): thumbnail endpoint returns 400 for empty collection."""
+        response = self.client.get(url_for('proxy.image_proxy_thumbnail',
+                                           id=self.collection.id, type='collection'))
+        self.assertEqual(response.status_code, 400)
 
 
 if __name__ == '__main__':
