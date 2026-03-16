@@ -37,7 +37,7 @@ def append_aggregate(query: dict, agg_field: EsFields, page: int, size: int, sor
             }
         },
         "ids": {
-            "terms": {"field": agg_field.value,  "size": 10000},
+            "terms": {"field": agg_field.value,  "size": current_app.config.get("OPEN_SEARCH_AGG_BUCKET_LIMIT", 10000)},
             "aggs": {
                 "bucket_sort": {
                     "bucket_sort": {
@@ -97,7 +97,7 @@ def text_search_highlight(text: str, filter_field: EsFields, filter_value: str):
     for hit in es_search(query)['hits']['hits']:
         yield {
             "page_id": hit['_source']['page_id'],
-            "highlight": hit['highlight']['text']
+            "highlight": hit.get('highlight', {}).get('text', [])
         }
 
 def set_page_ocr_fields(query: dict) -> dict:

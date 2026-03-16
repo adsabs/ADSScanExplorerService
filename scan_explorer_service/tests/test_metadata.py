@@ -356,5 +356,40 @@ class TestNullPageHandling(TestCaseDatabase):
         self.assertIn('no pages', data['message'].lower())
 
 
+class TestOpenSearchHighlight(TestCaseDatabase):
+
+    def create_app(self):
+        from scan_explorer_service.app import create_app
+        return create_app(**{
+            'SQLALCHEMY_DATABASE_URI': self.postgresql_url,
+            'OPEN_SEARCH_URL': 'http://localhost:1234',
+            'OPEN_SEARCH_INDEX': 'test',
+            'SQLALCHEMY_ECHO': False,
+            'TESTING': True,
+            'PROPAGATE_EXCEPTIONS': True,
+            'TRAP_BAD_REQUEST_ERRORS': True,
+            'PRESERVE_CONTEXT_ON_EXCEPTION': False
+        })
+
+    def setUp(self):
+        Base.metadata.drop_all(bind=self.app.db.engine)
+        Base.metadata.create_all(bind=self.app.db.engine)
+
+    @patch('scan_explorer_service.open_search.es_search')
+    def test_text_search_highlight_missing_highlight_field(self, mock_es_search):
+        mock_es_search.return_value = {
+            'hits': {
+                'hits': [
+                    {'_source': {'page_id': 'page1'}},
+                ]
+            }
+        }
+        from scan_explorer_service.open_search import text_search_highlight, EsFields
+        results = list(text_search_highlight('test query', EsFields.volume_id, 'vol1'))
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['page_id'], 'page1')
+        self.assertEqual(results[0]['highlight'], [])
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -26,7 +26,7 @@ def article_extra(bibcode: str):
         try:
             params = {'q': f'bibcode:{bibcode}', 'fl':'title,author'}
             headers = {'Authorization': f'Bearer {auth_token}'}
-            response = requests.get(ads_search_service, params, headers=headers).json()
+            response = requests.get(ads_search_service, params, headers=headers, timeout=5).json()
             docs = response.get('response').get('docs')
             if docs:
                 return docs[0]
@@ -61,7 +61,7 @@ def put_article():
                 article = Article(**json)
                 article_overwrite(session, article)
                 return jsonify({'id': article.bibcode}), 200
-            except:
+            except Exception:
                 session.rollback()
                 return jsonify(message='Failed to create article'), 500
     else:
@@ -130,7 +130,7 @@ def put_collection():
                 session.commit()
 
                 return jsonify({'id': collection.id}), 200
-            except:
+            except Exception:
                 session.rollback()
                 return jsonify(message='Failed to create collection'), 500
     else:
@@ -156,7 +156,7 @@ def put_page():
                 session.commit()
                 session.refresh(page)
                 return jsonify({'id': page.id}), 200
-            except:
+            except Exception:
                 session.rollback()
                 return jsonify(message='Failed to create page'), 500
     else:
