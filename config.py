@@ -19,6 +19,7 @@ SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 OPEN_SEARCH_URL = 'http://opensearch-node1:9200'
 OPEN_SEARCH_INDEX = 'scan-explorer'
+OPEN_SEARCH_AGG_BUCKET_LIMIT = 10000
 
 ADS_SEARCH_SERVICE_URL = 'https://api.adsabs.harvard.edu/v1/search/query'
 ADS_SEARCH_SERVICE_TOKEN = '<CHANGE ME>'

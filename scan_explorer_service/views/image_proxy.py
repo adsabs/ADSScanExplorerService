@@ -52,7 +52,10 @@ def image_proxy(path):
     def generate():
         for chunk in r.raw.stream(decode_content=False):
             yield chunk
-    return Response(generate(), status=r.status_code, headers=headers)
+
+    resp = Response(generate(), status=r.status_code, headers=headers)
+    resp.call_on_close(r.close)
+    return resp
 
 
 @advertise(scopes=['api'], rate_limit=[5000, 3600*24])

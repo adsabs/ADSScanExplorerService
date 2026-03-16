@@ -88,6 +88,9 @@ class TestProxy(TestCaseDatabase):
             def json(self):
                 return self.json_data
 
+            def close(self):
+                pass
+
         if 'notfound' in args[1]:
             return MockResponse({}, 401, {})
         elif 'badrequest' in args[1]:
@@ -110,6 +113,20 @@ class TestProxy(TestCaseDatabase):
 
         response = image_proxy('badrequest-~image-~path')
         assert(response.status_code == 400)
+
+    @patch('scan_explorer_service.views.image_proxy.requests.request')
+    def test_image_proxy_closes_upstream_response(self, mock_request):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.raw.stream.return_value = [b'chunk1', b'chunk2']
+        mock_request.return_value = mock_response
+
+        url = url_for('proxy.image_proxy', path='some-~image-~path')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        response.close()
+        mock_response.close.assert_called()
 
     @patch('requests.request', side_effect=mocked_request)
     def test_get_thumbnail(self, mock_request):
@@ -233,6 +250,8 @@ class TestImageProxyRetry(TestCaseDatabase):
                 self.raw = Raw(d)
                 self.status_code = sc
                 self.headers = h or {}
+            def close(self):
+                pass
         return MockResponse(data, status_code, headers or {})
 
     @patch('requests.request')
