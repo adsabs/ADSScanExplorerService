@@ -42,6 +42,7 @@ def image_proxy(path):
             f"Upstream image request failed (status {r.status_code}), "
             f"retrying in {retry_delay}s (attempt {attempt + 1}/{retries})")
         time.sleep(retry_delay)
+        r.close()
         r = requests.request(request.method, encoded_url, params=request.args, stream=True,
                              headers=req_headers, allow_redirects=False, data=request.form)
 

@@ -183,9 +183,9 @@ def serialize_os_agg_collection_bucket(bucket: dict):
     volume = id[5:9]
     return {'id': id, 'journal': journal, 'volume': volume, 'pages': bucket['doc_count']}
 
-def serialize_os_collection_result(result: dict, page: int, limit: int, contentQuery):
+def serialize_os_collection_result(result: dict, page: int, limit: int, contentQuery, agg_bucket_limit: int = 10000):
     total_count = result['aggregations']['total_count']['value']
-    page_count = int(math.ceil(total_count / limit))    
+    page_count = int(math.ceil(min(total_count, agg_bucket_limit) / limit))
     es_buckets = result['aggregations']['ids']['buckets']
 
     return {'page': page, 'pageCount': page_count, 'limit': limit, 'total': total_count, 'query': contentQuery,
@@ -195,9 +195,9 @@ def serialize_os_agg_article_bucket(bucket: dict):
     id = bucket['key']
     return {'id': id, 'bibcode': id, 'pages': bucket['doc_count']}
 
-def serialize_os_article_result(result: dict, page: int, limit: int, contentQuery = '', extra_col_count = 0, extra_page_count = 0):
+def serialize_os_article_result(result: dict, page: int, limit: int, contentQuery = '', extra_col_count = 0, extra_page_count = 0, agg_bucket_limit: int = 10000):
     total_count = result['aggregations']['total_count']['value']
-    page_count = int(math.ceil(total_count / limit))    
+    page_count = int(math.ceil(min(total_count, agg_bucket_limit) / limit))
     es_buckets = result['aggregations']['ids']['buckets']
 
     return {'page': page, 'pageCount': page_count, 'limit': limit, 'total': total_count, 'query': contentQuery,
