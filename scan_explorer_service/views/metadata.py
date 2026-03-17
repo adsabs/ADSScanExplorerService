@@ -179,7 +179,8 @@ def article_search():
         if article_count == 0:
             collection_count = aggregate_search(qs, EsFields.volume_id, page, limit, sort)['aggregations']['total_count']['value']
             page_count = page_os_search(qs, page, limit, sort)['hits']['total']['value']
-        return jsonify(serialize_os_article_result(result, page, limit, text_query, collection_count, page_count))
+        agg_limit = current_app.config.get("OPEN_SEARCH_AGG_BUCKET_LIMIT", 10000)
+        return jsonify(serialize_os_article_result(result, page, limit, text_query, collection_count, page_count, agg_limit))
     except Exception as e:
         current_app.logger.exception(f"An exception has occurred: {e}")
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
@@ -195,7 +196,8 @@ def collection_search():
         text_query = ''
         if SearchOptions.FullText.value in qs_dict.keys():
             text_query = qs_dict[SearchOptions.FullText.value]
-        return jsonify(serialize_os_collection_result(result, page, limit, text_query))
+        agg_limit = current_app.config.get("OPEN_SEARCH_AGG_BUCKET_LIMIT", 10000)
+        return jsonify(serialize_os_collection_result(result, page, limit, text_query, agg_limit))
     except Exception as e:
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
 
