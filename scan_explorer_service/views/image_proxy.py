@@ -14,6 +14,11 @@ import io
 import sys
 import time
 
+try:
+    from gevent.pool import Pool as GeventPool
+except ImportError:
+    GeventPool = None
+
 bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
 
 
@@ -84,7 +89,7 @@ def get_item(session, id):
                 session.query(Article).filter(Article.id == id).one_or_none()
                 or session.query(Collection).filter(Collection.id == id).one_or_none())
     if not item:
-        raise Exception("ID: " + id + " not found")
+        raise Exception("ID: " + str(id) + " not found")
 
     return item
 
@@ -105,29 +110,42 @@ def get_pages(item, session, page_start, page_end, page_limit):
     return query
 
 
-@stream_with_context
 def fetch_images(session, item, page_start, page_end, page_limit, memory_limit):
-    n_pages = 0
-    memory_sum = 0
     query = get_pages(item, session, page_start, page_end, page_limit)
-    for page in query.all():
+    pages = query.all()
 
-        n_pages += 1
+    page_objects = []
+    for page in pages[:page_limit]:
+        image_path, fmt = page.image_path_basic
+        object_name = '/'.join(image_path) + fmt
+        page_objects.append(object_name)
 
-        current_app.logger.debug(f"Generating image for page: {n_pages}")
-        if n_pages > page_limit:
-            break
-        if memory_sum > memory_limit:
-            current_app.logger.error(f"Memory limit reached: {memory_sum} > {memory_limit}")
-            break
-        image_path, format = page.image_path_basic
-        object_name = '/'.join(image_path)
-        object_name += format
+    config = current_app.config
+    s3 = S3Provider(config, 'AWS_BUCKET_NAME_IMAGE')
 
-        im_data = fetch_object(object_name, 'AWS_BUCKET_NAME_IMAGE')
-        memory_sum += sys.getsizeof(im_data)
+    def _fetch(obj_name):
+        return s3.read_object_s3(obj_name)
 
-        yield im_data
+    pool = None
+    if GeventPool is not None:
+        pool = GeventPool(size=20)
+        results = pool.imap(_fetch, page_objects)
+    else:
+        results = (_fetch(obj) for obj in page_objects)
+
+    try:
+        memory_sum = 0
+        for im_data in results:
+            if not im_data:
+                continue
+            memory_sum += sys.getsizeof(im_data)
+            if memory_sum > memory_limit:
+                current_app.logger.error(f"Memory limit reached: {memory_sum} > {memory_limit}")
+                break
+            yield im_data
+    finally:
+        if pool is not None:
+            pool.kill()
 
 
 def fetch_object(object_name, bucket_name):
@@ -181,6 +199,9 @@ def pdf_save():
         page_end = request.args.get('page_end', math.inf, int)
         memory_limit = current_app.config.get("IMAGE_PDF_MEMORY_LIMIT")
         page_limit = current_app.config.get("IMAGE_PDF_PAGE_LIMIT")
+
+        if page_end != math.inf and (page_end - page_start + 1) > page_limit:
+            return jsonify(Message=f"Requested {page_end - page_start + 1} pages exceeds limit of {page_limit}"), 400
 
         with current_app.session_scope() as session:
 

@@ -157,9 +157,11 @@ class TestProxy(TestCaseDatabase):
                 get_item(self.app.db.session, 'non-existent-id')
             assert("ID: non-existent-id not found" in str(context.exception))
 
-    @patch('scan_explorer_service.views.image_proxy.fetch_object')
-    def test_fetch_images(self, mock_fetch_object):
-        mock_fetch_object.return_value = b'image_data'
+    @patch('scan_explorer_service.views.image_proxy.S3Provider')
+    def test_fetch_images(self, mock_s3_cls):
+        mock_s3 = MagicMock()
+        mock_s3.read_object_s3.return_value = b'image_data'
+        mock_s3_cls.return_value = mock_s3
         item = self.article
         page_start = 1
         page_end = 2
@@ -169,7 +171,7 @@ class TestProxy(TestCaseDatabase):
         gen = fetch_images(self.app.db.session, item, page_start, page_end, page_limit, memory_limit)
         images = list(gen)
         self.assertEqual(images, [b'image_data', b'image_data'])
-        mock_fetch_object.assert_called()
+        mock_s3.read_object_s3.assert_called()
 
     @patch('scan_explorer_service.utils.s3_utils.S3Provider.read_object_s3')
     def test_fetch_object(self, mock_read_object_s3):

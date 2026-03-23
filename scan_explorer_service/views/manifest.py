@@ -1,5 +1,5 @@
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, Response
 from flask_restful import abort
 from scan_explorer_service.extensions import manifest_factory
 from scan_explorer_service.models import Article, Page, Collection
@@ -8,6 +8,61 @@ from scan_explorer_service.open_search import EsFields, text_search_highlight
 from scan_explorer_service.utils.utils import proxy_url, url_for_proxy
 from sqlalchemy.orm import selectinload
 from typing import Union
+import json as json_lib
+import redis
+import logging
+
+logger = logging.getLogger(__name__)
+
+MANIFEST_CACHE_TTL = 3600
+MANIFEST_CACHE_PREFIX = 'scan:manifest:'
+
+_redis_client = None
+
+
+def _get_redis():
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client
+    try:
+        url = current_app.config.get('REDIS_URL', 'redis://redis-backend:6379/1')
+        _redis_client = redis.from_url(url, decode_responses=True, socket_timeout=2, socket_connect_timeout=2)
+        _redis_client.ping()
+        return _redis_client
+    except Exception:
+        logger.warning("Redis unavailable, manifest caching disabled")
+        return None
+
+
+def _cache_get(key):
+    r = _get_redis()
+    if r is None:
+        return None
+    try:
+        return r.get(MANIFEST_CACHE_PREFIX + key)
+    except Exception:
+        return None
+
+
+def _cache_set(key, json_str):
+    r = _get_redis()
+    if r is None:
+        return
+    try:
+        r.setex(MANIFEST_CACHE_PREFIX + key, MANIFEST_CACHE_TTL, json_str)
+    except Exception:
+        logger.debug("Failed to write manifest cache for key %s", key, exc_info=True)
+
+
+def _cache_delete(key):
+    r = _get_redis()
+    if r is None:
+        return
+    try:
+        r.delete(MANIFEST_CACHE_PREFIX + key)
+    except Exception:
+        logger.debug("Failed to delete manifest cache for key %s", key, exc_info=True)
+
 
 bp_manifest = Blueprint('manifest', __name__, url_prefix='/manifest')
 
@@ -27,6 +82,10 @@ def before_request():
 def get_manifest(id: str):
     """ Creates an IIIF manifest from an article or Collection"""
 
+    cached = _cache_get(id)
+    if cached is not None:
+        return Response(cached, content_type='application/json')
+
     with current_app.session_scope() as session:
         item = session.query(Article).filter(Article.id == id).one_or_none()
 
@@ -34,7 +93,10 @@ def get_manifest(id: str):
             manifest = manifest_factory.create_manifest(item)
             search_url = url_for_proxy('manifest.search', id=id)
             manifest_factory.add_search_service(manifest, search_url)
-            return manifest.toJSON(top=True)
+            result = manifest.toJSON(top=True)
+            result_json = json_lib.dumps(result) if isinstance(result, dict) else result
+            _cache_set(id, result_json)
+            return result
 
         collection = session.query(Collection).filter(Collection.id == id).one_or_none()
 
@@ -58,7 +120,10 @@ def get_manifest(id: str):
                 collection, pages, articles, article_pages)
             search_url = url_for_proxy('manifest.search', id=id)
             manifest_factory.add_search_service(manifest, search_url)
-            return manifest.toJSON(top=True)
+            result = manifest.toJSON(top=True)
+            result_json = json_lib.dumps(result) if isinstance(result, dict) else result
+            _cache_set(id, result_json)
+            return result
 
         return jsonify(exception='Article not found'), 404
 
@@ -92,7 +157,7 @@ def search(id: str):
         if item:
             annotation_list = manifest_factory.annotationList(request.url)
             annotation_list.resources = []
-            
+
             es_field = EsFields.article_id if isinstance(item, Article) else EsFields.volume_id
             results = text_search_highlight(query, es_field, item.id)
 
