@@ -3,6 +3,19 @@ import opensearchpy
 from flask import current_app
 from scan_explorer_service.utils.search_utils import EsFields, OrderOptions
 
+
+def _get_os_client():
+    if not hasattr(current_app, '_os_client') or current_app._os_client is None:
+        url = current_app.config.get('OPEN_SEARCH_URL')
+        current_app._os_client = opensearchpy.OpenSearch(
+            url,
+            timeout=30,
+            max_retries=2,
+            retry_on_timeout=True,
+            pool_maxsize=20,
+        )
+    return current_app._os_client
+
 def create_query_string_query(query_string: str):
     query =  {
         "query": {
@@ -70,7 +83,7 @@ def append_highlight(query: dict):
 
 
 def es_search(query: dict) -> Iterator[str]:
-    es = opensearchpy.OpenSearch(current_app.config.get('OPEN_SEARCH_URL'))
+    es = _get_os_client()
     resp = es.search(index=current_app.config.get(
         'OPEN_SEARCH_INDEX'), body=query)
     return resp

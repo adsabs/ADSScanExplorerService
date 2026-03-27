@@ -53,6 +53,8 @@ class OrderOptions(str, enum.Enum):
 
 def parse_query_args(args):
     qs = re.sub(':\s*', ':', args.get('q', '', str))
+    if not qs or not qs.strip():
+        raise ValueError('Query string is required')
 
     qs, qs_dict = parse_query_string(qs)
 

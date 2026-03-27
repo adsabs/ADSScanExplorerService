@@ -9,6 +9,7 @@ from scan_explorer_service.utils.search_utils import *
 from scan_explorer_service.views.view_utils import ApiErrors
 from scan_explorer_service.views.manifest import _cache_delete
 from scan_explorer_service.open_search import EsFields, page_os_search, aggregate_search, page_ocr_os_search
+import opensearchpy
 import requests
 
 bp_metadata = Blueprint('metadata', __name__, url_prefix='/metadata')
@@ -183,6 +184,9 @@ def article_search():
             page_count = page_os_search(qs, page, limit, sort)['hits']['total']['value']
         agg_limit = current_app.config.get("OPEN_SEARCH_AGG_BUCKET_LIMIT", 10000)
         return jsonify(serialize_os_article_result(result, page, limit, text_query, collection_count, page_count, agg_limit))
+    except (opensearchpy.exceptions.ConnectionError, opensearchpy.exceptions.ConnectionTimeout, opensearchpy.exceptions.TransportError) as e:
+        current_app.logger.exception(f"OpenSearch error: {e}")
+        return jsonify(message='Search service temporarily unavailable', type=ApiErrors.SearchError.value), 503
     except Exception as e:
         current_app.logger.exception(f"An exception has occurred: {e}")
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
@@ -200,6 +204,9 @@ def collection_search():
             text_query = qs_dict[SearchOptions.FullText.value]
         agg_limit = current_app.config.get("OPEN_SEARCH_AGG_BUCKET_LIMIT", 10000)
         return jsonify(serialize_os_collection_result(result, page, limit, text_query, agg_limit))
+    except (opensearchpy.exceptions.ConnectionError, opensearchpy.exceptions.ConnectionTimeout, opensearchpy.exceptions.TransportError) as e:
+        current_app.logger.exception(f"OpenSearch error: {e}")
+        return jsonify(message='Search service temporarily unavailable', type=ApiErrors.SearchError.value), 503
     except Exception as e:
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
 
@@ -214,6 +221,9 @@ def page_search():
         if SearchOptions.FullText.value in qs_dict.keys():
             text_query = qs_dict[SearchOptions.FullText.value]
         return jsonify(serialize_os_page_result(result, page, limit, text_query))
+    except (opensearchpy.exceptions.ConnectionError, opensearchpy.exceptions.ConnectionTimeout, opensearchpy.exceptions.TransportError) as e:
+        current_app.logger.exception(f"OpenSearch error: {e}")
+        return jsonify(message='Search service temporarily unavailable', type=ApiErrors.SearchError.value), 503
     except Exception as e:
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
 
@@ -244,5 +254,8 @@ def get_page_ocr():
             result = page_ocr_os_search(collection_id, page_number)
             return serialize_os_page_ocr_result(result)
 
+    except (opensearchpy.exceptions.ConnectionError, opensearchpy.exceptions.ConnectionTimeout, opensearchpy.exceptions.TransportError) as e:
+        current_app.logger.exception(f"OpenSearch error: {e}")
+        return jsonify(message='Search service temporarily unavailable', type=ApiErrors.SearchError.value), 503
     except Exception as e:
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
