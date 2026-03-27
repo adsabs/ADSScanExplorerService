@@ -203,6 +203,9 @@ def pdf_save():
         if page_end != math.inf and (page_end - page_start + 1) > page_limit:
             return jsonify(Message=f"Requested {page_end - page_start + 1} pages exceeds limit of {page_limit}"), 400
 
+        if not id:
+            return jsonify(Message="Missing required parameter: id"), 400
+
         with current_app.session_scope() as session:
 
             item = get_item(session, id)

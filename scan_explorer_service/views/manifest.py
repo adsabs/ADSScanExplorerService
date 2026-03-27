@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 MANIFEST_CACHE_TTL = 3600
 MANIFEST_CACHE_PREFIX = 'scan:manifest:'
+SEARCH_CACHE_TTL = 60
+SEARCH_CACHE_PREFIX = 'scan:search:'
 
 _redis_client = None
 
@@ -62,6 +64,26 @@ def _cache_delete(key):
         r.delete(MANIFEST_CACHE_PREFIX + key)
     except Exception:
         logger.debug("Failed to delete manifest cache for key %s", key, exc_info=True)
+
+
+def _search_cache_get(key):
+    r = _get_redis()
+    if r is None:
+        return None
+    try:
+        return r.get(SEARCH_CACHE_PREFIX + key)
+    except Exception:
+        return None
+
+
+def _search_cache_set(key, json_str):
+    r = _get_redis()
+    if r is None:
+        return
+    try:
+        r.setex(SEARCH_CACHE_PREFIX + key, SEARCH_CACHE_TTL, json_str)
+    except Exception:
+        logger.debug("Failed to write search cache for key %s", key, exc_info=True)
 
 
 bp_manifest = Blueprint('manifest', __name__, url_prefix='/manifest')
@@ -150,6 +172,11 @@ def search(id: str):
     if not query or len(query) <= 0:
         return jsonify(exception='No search query specified'), 400
 
+    cache_key = f"{id}:{query}"
+    cached = _search_cache_get(cache_key)
+    if cached is not None:
+        return Response(cached, content_type='application/json')
+
     with current_app.session_scope() as session:
         item: Union[Article, Collection] = (
                     session.query(Article).filter(Article.id == id).one_or_none()
@@ -168,8 +195,10 @@ def search(id: str):
                 highlight_text = "<br><br>".join(res['highlight']).replace("em>", "b>")
                 annotation.text(highlight_text, format="text/html")
 
-            return annotation_list.toJSON(top=True)
-
+            result = annotation_list.toJSON(top=True)
+            result_json = json_lib.dumps(result) if isinstance(result, dict) else result
+            _search_cache_set(cache_key, result_json)
+            return result
 
         else:
             return jsonify(exception='Article or volume not found'), 404
