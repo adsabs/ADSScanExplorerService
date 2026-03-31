@@ -9,8 +9,10 @@ from scan_explorer_service.utils.utils import proxy_url, url_for_proxy
 from sqlalchemy.orm import selectinload
 from typing import Union
 import json as json_lib
+import hashlib
 import redis
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -20,68 +22,98 @@ SEARCH_CACHE_TTL = 60
 SEARCH_CACHE_PREFIX = 'scan:search:'
 
 _redis_client = None
+_redis_lock = threading.Lock()
 
 
 def _get_redis():
+    """Return the singleton Redis client, creating it on first call with double-checked locking."""
     global _redis_client
     if _redis_client is not None:
         return _redis_client
-    try:
-        url = current_app.config.get('REDIS_URL', 'redis://redis-backend:6379/1')
-        _redis_client = redis.from_url(url, decode_responses=True, socket_timeout=2, socket_connect_timeout=2)
-        _redis_client.ping()
-        return _redis_client
-    except Exception:
-        logger.warning("Redis unavailable, manifest caching disabled")
-        return None
+    with _redis_lock:
+        # Double-checked locking: another thread may have connected while we waited for the lock
+        if _redis_client is not None:
+            return _redis_client
+        try:
+            url = current_app.config.get('REDIS_URL', 'redis://redis-backend:6379/4')
+            client = redis.from_url(url, decode_responses=True, socket_timeout=2, socket_connect_timeout=2)
+            client.ping()
+            _redis_client = client
+            return _redis_client
+        except Exception:
+            logger.warning("Redis unavailable, manifest caching disabled")
+            return None
+
+
+def _reset_redis():
+    """Clear the cached Redis client so the next call to _get_redis reconnects."""
+    global _redis_client
+    _redis_client = None
 
 
 def _cache_get(key):
+    """Fetch a cached manifest JSON string by key, returning None on miss or Redis failure."""
     r = _get_redis()
     if r is None:
         return None
     try:
         return r.get(MANIFEST_CACHE_PREFIX + key)
+    except redis.ConnectionError:
+        _reset_redis()
+        return None
     except Exception:
         return None
 
 
 def _cache_set(key, json_str):
+    """Store a manifest JSON string in Redis with TTL. Silently resets on connection failure."""
     r = _get_redis()
     if r is None:
         return
     try:
         r.setex(MANIFEST_CACHE_PREFIX + key, MANIFEST_CACHE_TTL, json_str)
+    except redis.ConnectionError:
+        _reset_redis()
     except Exception:
         logger.debug("Failed to write manifest cache for key %s", key, exc_info=True)
 
 
 def _cache_delete(key):
+    """Remove a manifest cache entry. Called when a collection is overwritten via PUT."""
     r = _get_redis()
     if r is None:
         return
     try:
         r.delete(MANIFEST_CACHE_PREFIX + key)
+    except redis.ConnectionError:
+        _reset_redis()
     except Exception:
         logger.debug("Failed to delete manifest cache for key %s", key, exc_info=True)
 
 
 def _search_cache_get(key):
+    """Fetch a cached search result by key. Uses a shorter TTL than manifests."""
     r = _get_redis()
     if r is None:
         return None
     try:
         return r.get(SEARCH_CACHE_PREFIX + key)
+    except redis.ConnectionError:
+        _reset_redis()
+        return None
     except Exception:
         return None
 
 
 def _search_cache_set(key, json_str):
+    """Store a search result in Redis with a short TTL (60s)."""
     r = _get_redis()
     if r is None:
         return
     try:
         r.setex(SEARCH_CACHE_PREFIX + key, SEARCH_CACHE_TTL, json_str)
+    except redis.ConnectionError:
+        _reset_redis()
     except Exception:
         logger.debug("Failed to write search cache for key %s", key, exc_info=True)
 
@@ -91,6 +123,7 @@ bp_manifest = Blueprint('manifest', __name__, url_prefix='/manifest')
 
 @bp_manifest.before_request
 def before_request():
+    """Configure manifest_factory base URIs from the proxy URL before each request."""
     server, prefix = proxy_url()
     base_uri = f'{server}/{prefix}/manifest'
     manifest_factory.set_base_prezi_uri(base_uri)
@@ -172,7 +205,7 @@ def search(id: str):
     if not query or len(query) <= 0:
         return jsonify(exception='No search query specified'), 400
 
-    cache_key = f"{id}:{query}"
+    cache_key = hashlib.md5(f"{id}:{query}".encode()).hexdigest()
     cached = _search_cache_get(cache_key)
     if cached is not None:
         return Response(cached, content_type='application/json')

@@ -8,6 +8,7 @@ from scan_explorer_service.models import Article, Base, Collection, Page
 
 
 class TestManifestCache(TestCaseDatabase):
+    """Tests for Redis-backed manifest caching behavior."""
 
     def create_app(self):
         from scan_explorer_service.app import create_app
@@ -62,6 +63,7 @@ class TestManifestCache(TestCaseDatabase):
         self.app.db.drop_all()
 
     def _mock_redis(self):
+        """Create an in-memory mock Redis client with get/setex/delete and TTL support."""
         mock_r = MagicMock()
         store = {}
 
@@ -91,6 +93,7 @@ class TestManifestCache(TestCaseDatabase):
         return mock_r, store
 
     def test_cache_hit_returns_cached_json(self):
+        """Verifies that a cached manifest is returned directly without regeneration."""
         mock_r, store = self._mock_redis()
         from scan_explorer_service.views.manifest import MANIFEST_CACHE_PREFIX
         store[MANIFEST_CACHE_PREFIX + self.article.id] = ('{"@type":"sc:Manifest","cached":true}', time.monotonic() + 3600)
@@ -102,6 +105,7 @@ class TestManifestCache(TestCaseDatabase):
         self.assertTrue(data.get('cached'))
 
     def test_cache_hit_returns_correct_content_type(self):
+        """Verifies that cached manifest responses have application/json content type."""
         mock_r, store = self._mock_redis()
         from scan_explorer_service.views.manifest import MANIFEST_CACHE_PREFIX
         store[MANIFEST_CACHE_PREFIX + self.collection.id] = ('{"@type":"sc:Manifest"}', time.monotonic() + 3600)
@@ -112,6 +116,7 @@ class TestManifestCache(TestCaseDatabase):
         self.assertIn('application/json', r.content_type)
 
     def test_cache_miss_calls_setex(self):
+        """Verifies that a cache miss triggers a setex call to store the manifest."""
         mock_r, store = self._mock_redis()
         original_setex = mock_r.setex
         setex_calls = []
@@ -129,6 +134,7 @@ class TestManifestCache(TestCaseDatabase):
         self.assertEqual(setex_calls[0], MANIFEST_CACHE_PREFIX + self.article.id)
 
     def test_cached_manifest_skips_manifest_factory(self):
+        """Verifies that manifest_factory is not called when the manifest is cached."""
         mock_r, store = self._mock_redis()
         from scan_explorer_service.views.manifest import MANIFEST_CACHE_PREFIX
         store[MANIFEST_CACHE_PREFIX + self.article.id] = ('{"@type":"sc:Manifest"}', time.monotonic() + 3600)
@@ -140,6 +146,7 @@ class TestManifestCache(TestCaseDatabase):
             mock_factory.create_manifest.assert_not_called()
 
     def test_404_not_cached(self):
+        """Verifies that 404 responses are not stored in the cache."""
         mock_r, store = self._mock_redis()
         from scan_explorer_service.views.manifest import MANIFEST_CACHE_PREFIX
 
@@ -149,6 +156,7 @@ class TestManifestCache(TestCaseDatabase):
         self.assertNotIn(MANIFEST_CACHE_PREFIX + 'nonexistent', store)
 
     def test_redis_unavailable_falls_through(self):
+        """Verifies that the endpoint still works when Redis is unavailable."""
         import scan_explorer_service.views.manifest as m
         m._redis_client = None
 
@@ -161,6 +169,7 @@ class TestManifestCache(TestCaseDatabase):
 
 
 class TestPdfEarlyLimitCheck(TestCaseDatabase):
+    """Tests for early page-count validation before PDF generation."""
 
     def create_app(self):
         from scan_explorer_service.app import create_app
@@ -184,6 +193,7 @@ class TestPdfEarlyLimitCheck(TestCaseDatabase):
         self.app.db.session.commit()
 
     def test_over_limit_returns_400_immediately(self):
+        """Verifies that requesting more pages than the limit returns 400 without processing."""
         response = self.client.get(url_for('proxy.pdf_save',
                                            id=self.collection.id,
                                            page_start=1,
@@ -193,6 +203,7 @@ class TestPdfEarlyLimitCheck(TestCaseDatabase):
         self.assertIn('exceeds limit', data['Message'])
 
     def test_exactly_at_limit_passes(self):
+        """Verifies that requesting exactly the page limit is allowed."""
         with patch('scan_explorer_service.views.image_proxy.fetch_images') as mock_fi, \
              patch('scan_explorer_service.views.image_proxy.img2pdf.convert') as mock_conv:
             mock_fi.return_value = [b'data']
@@ -204,6 +215,7 @@ class TestPdfEarlyLimitCheck(TestCaseDatabase):
             self.assertEqual(response.status_code, 200)
 
     def test_one_over_limit_returns_400(self):
+        """Verifies that requesting one page over the limit returns 400."""
         response = self.client.get(url_for('proxy.pdf_save',
                                            id=self.collection.id,
                                            page_start=1,
@@ -211,6 +223,7 @@ class TestPdfEarlyLimitCheck(TestCaseDatabase):
         self.assertEqual(response.status_code, 400)
 
     def test_no_page_end_passes_limit_check(self):
+        """Verifies that omitting page_end bypasses the page limit check."""
         with patch('scan_explorer_service.views.image_proxy.fetch_images') as mock_fi, \
              patch('scan_explorer_service.views.image_proxy.img2pdf.convert') as mock_conv:
             mock_fi.return_value = [b'data']
@@ -222,6 +235,7 @@ class TestPdfEarlyLimitCheck(TestCaseDatabase):
 
     @patch('scan_explorer_service.views.image_proxy.get_item')
     def test_over_limit_does_not_touch_db(self, mock_get_item):
+        """Verifies that over-limit requests are rejected before any database access."""
         response = self.client.get(url_for('proxy.pdf_save',
                                            id=self.collection.id,
                                            page_start=1,
@@ -230,6 +244,7 @@ class TestPdfEarlyLimitCheck(TestCaseDatabase):
         mock_get_item.assert_not_called()
 
     def test_inverted_page_range_returns_empty_pdf(self):
+        """Verifies that an inverted page range (start > end) is handled gracefully."""
         with patch('scan_explorer_service.views.image_proxy.fetch_images') as mock_fi, \
              patch('scan_explorer_service.views.image_proxy.img2pdf.convert') as mock_conv:
             mock_fi.return_value = []
@@ -242,6 +257,7 @@ class TestPdfEarlyLimitCheck(TestCaseDatabase):
 
 
 class TestParallelFetchImages(TestCaseDatabase):
+    """Tests for parallel image fetching used in PDF generation."""
 
     def create_app(self):
         from scan_explorer_service.app import create_app
@@ -288,6 +304,7 @@ class TestParallelFetchImages(TestCaseDatabase):
 
     @patch('scan_explorer_service.views.image_proxy.S3Provider')
     def test_fetch_images_returns_all_pages(self, mock_s3_cls):
+        """Verifies that fetch_images returns image data for all pages in the range."""
         mock_s3 = MagicMock()
         mock_s3.read_object_s3.return_value = b'image_data'
         mock_s3_cls.return_value = mock_s3
@@ -301,6 +318,7 @@ class TestParallelFetchImages(TestCaseDatabase):
 
     @patch('scan_explorer_service.views.image_proxy.S3Provider')
     def test_fetch_images_respects_memory_limit(self, mock_s3_cls):
+        """Verifies that fetch_images stops fetching when the memory limit is reached."""
         mock_s3 = MagicMock()
         mock_s3.read_object_s3.return_value = b'x' * 1000
         mock_s3_cls.return_value = mock_s3
@@ -313,6 +331,7 @@ class TestParallelFetchImages(TestCaseDatabase):
 
     @patch('scan_explorer_service.views.image_proxy.S3Provider')
     def test_fetch_images_skips_none_results(self, mock_s3_cls):
+        """Verifies that fetch_images filters out None results from S3."""
         mock_s3 = MagicMock()
         mock_s3.read_object_s3.side_effect = [b'data1', None, b'data3', b'data4', b'data5']
         mock_s3_cls.return_value = mock_s3
@@ -325,6 +344,7 @@ class TestParallelFetchImages(TestCaseDatabase):
 
     @patch('scan_explorer_service.views.image_proxy.S3Provider')
     def test_single_s3provider_instance(self, mock_s3_cls):
+        """Verifies that fetch_images reuses a single S3Provider instance across all pages."""
         mock_s3 = MagicMock()
         mock_s3.read_object_s3.return_value = b'image_data'
         mock_s3_cls.return_value = mock_s3

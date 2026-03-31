@@ -169,7 +169,8 @@ def put_page():
 
 
 def _make_search_cache_key(prefix, args):
-    raw = prefix + str(sorted(args.items()))
+    """Build an MD5 cache key from the search type prefix and all query params (including multi-valued)."""
+    raw = prefix + str(sorted(args.items(multi=True)))
     return hashlib.md5(raw.encode()).hexdigest()
 
 
@@ -178,12 +179,12 @@ def _make_search_cache_key(prefix, args):
 def article_search():
     """Search for an article using one or some of the available keywords"""
     try:
+        qs, qs_dict, page, limit, sort = parse_query_args(request.args)
+
         cache_key = _make_search_cache_key('article', request.args)
         cached = _search_cache_get(cache_key)
         if cached is not None:
             return current_app.response_class(cached, content_type='application/json')
-
-        qs, qs_dict, page, limit, sort = parse_query_args(request.args)
         result = aggregate_search(qs, EsFields.article_id, page, limit, sort)
         text_query = ''
         if SearchOptions.FullText.value in qs_dict.keys():
@@ -211,12 +212,12 @@ def article_search():
 def collection_search():
     """Search for a collection using one or some of the available keywords"""
     try:
+        qs, qs_dict, page, limit, sort = parse_query_args(request.args)
+
         cache_key = _make_search_cache_key('collection', request.args)
         cached = _search_cache_get(cache_key)
         if cached is not None:
             return current_app.response_class(cached, content_type='application/json')
-
-        qs, qs_dict, page, limit, sort = parse_query_args(request.args)
         result = aggregate_search(qs, EsFields.volume_id, page, limit, sort)
         text_query = ''
         if SearchOptions.FullText.value in qs_dict.keys():
@@ -236,12 +237,12 @@ def collection_search():
 def page_search():
     """Search for a page using one or some of the available keywords"""
     try:
+        qs, qs_dict, page, limit, sort = parse_query_args(request.args)
+
         cache_key = _make_search_cache_key('page', request.args)
         cached = _search_cache_get(cache_key)
         if cached is not None:
             return current_app.response_class(cached, content_type='application/json')
-
-        qs, qs_dict, page, limit, sort = parse_query_args(request.args)
         result = page_os_search(qs, page, limit, sort)
         text_query = ''
         if SearchOptions.FullText.value in qs_dict.keys():
@@ -285,10 +286,9 @@ def get_page_ocr():
                 collection_id = item.id
 
             result = page_ocr_os_search(collection_id, page_number)
-            response = serialize_os_page_ocr_result(result)
-            if hasattr(response, 'data'):
-                _search_cache_set(cache_key, response.data.decode('utf-8') if isinstance(response.data, bytes) else response.data)
-            return response
+            ocr_text = serialize_os_page_ocr_result(result)
+            _search_cache_set(cache_key, ocr_text)
+            return current_app.response_class(ocr_text, content_type='text/plain')
 
     except (opensearchpy.exceptions.ConnectionError, opensearchpy.exceptions.ConnectionTimeout, opensearchpy.exceptions.TransportError) as e:
         current_app.logger.exception(f"OpenSearch error: {e}")
