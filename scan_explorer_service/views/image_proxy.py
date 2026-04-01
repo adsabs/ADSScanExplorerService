@@ -117,6 +117,7 @@ def get_pages(item, session, page_start, page_end, page_limit):
 def fetch_images(session, item, page_start, page_end, page_limit, memory_limit):
     """Yield page images from S3, stopping when memory_limit is exceeded.
     Uses gevent pool for parallel fetching when available."""
+    
     query = get_pages(item, session, page_start, page_end, page_limit)
     pages = query.all()
 

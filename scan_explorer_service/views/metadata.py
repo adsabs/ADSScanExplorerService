@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from flask_discoverer import advertise
 from scan_explorer_service.utils.search_utils import *
 from scan_explorer_service.views.view_utils import ApiErrors
-from scan_explorer_service.views.manifest import _cache_delete, _search_cache_get, _search_cache_set
+from scan_explorer_service.utils.cache import cache_delete_manifest, cache_get_search, cache_set_search
 from scan_explorer_service.open_search import EsFields, page_os_search, aggregate_search, page_ocr_os_search
 import opensearchpy
 import requests
@@ -132,7 +132,7 @@ def put_collection():
                         pg_insert(page_article_association_table).values(page_article_data).on_conflict_do_nothing()
                     )
                 session.commit()
-                _cache_delete(collection.id)
+                cache_delete_manifest(collection.id)
 
                 return jsonify({'id': collection.id}), 200
             except Exception:
@@ -182,7 +182,7 @@ def article_search():
         qs, qs_dict, page, limit, sort = parse_query_args(request.args)
 
         cache_key = _make_search_cache_key('article', request.args)
-        cached = _search_cache_get(cache_key)
+        cached = cache_get_search(cache_key)
         if cached is not None:
             return current_app.response_class(cached, content_type='application/json')
         result = aggregate_search(qs, EsFields.article_id, page, limit, sort)
@@ -197,7 +197,7 @@ def article_search():
             page_count = page_os_search(qs, page, limit, sort)['hits']['total']['value']
         agg_limit = current_app.config.get("OPEN_SEARCH_AGG_BUCKET_LIMIT", 10000)
         response_data = serialize_os_article_result(result, page, limit, text_query, collection_count, page_count, agg_limit)
-        _search_cache_set(cache_key, json_lib.dumps(response_data))
+        cache_set_search(cache_key, json_lib.dumps(response_data))
         return jsonify(response_data)
     except (opensearchpy.exceptions.ConnectionError, opensearchpy.exceptions.ConnectionTimeout, opensearchpy.exceptions.TransportError) as e:
         current_app.logger.exception(f"OpenSearch error: {e}")
@@ -215,7 +215,7 @@ def collection_search():
         qs, qs_dict, page, limit, sort = parse_query_args(request.args)
 
         cache_key = _make_search_cache_key('collection', request.args)
-        cached = _search_cache_get(cache_key)
+        cached = cache_get_search(cache_key)
         if cached is not None:
             return current_app.response_class(cached, content_type='application/json')
         result = aggregate_search(qs, EsFields.volume_id, page, limit, sort)
@@ -224,7 +224,7 @@ def collection_search():
             text_query = qs_dict[SearchOptions.FullText.value]
         agg_limit = current_app.config.get("OPEN_SEARCH_AGG_BUCKET_LIMIT", 10000)
         response_data = serialize_os_collection_result(result, page, limit, text_query, agg_limit)
-        _search_cache_set(cache_key, json_lib.dumps(response_data))
+        cache_set_search(cache_key, json_lib.dumps(response_data))
         return jsonify(response_data)
     except (opensearchpy.exceptions.ConnectionError, opensearchpy.exceptions.ConnectionTimeout, opensearchpy.exceptions.TransportError) as e:
         current_app.logger.exception(f"OpenSearch error: {e}")
@@ -240,7 +240,7 @@ def page_search():
         qs, qs_dict, page, limit, sort = parse_query_args(request.args)
 
         cache_key = _make_search_cache_key('page', request.args)
-        cached = _search_cache_get(cache_key)
+        cached = cache_get_search(cache_key)
         if cached is not None:
             return current_app.response_class(cached, content_type='application/json')
         result = page_os_search(qs, page, limit, sort)
@@ -248,7 +248,7 @@ def page_search():
         if SearchOptions.FullText.value in qs_dict.keys():
             text_query = qs_dict[SearchOptions.FullText.value]
         response_data = serialize_os_page_result(result, page, limit, text_query)
-        _search_cache_set(cache_key, json_lib.dumps(response_data))
+        cache_set_search(cache_key, json_lib.dumps(response_data))
         return jsonify(response_data)
     except (opensearchpy.exceptions.ConnectionError, opensearchpy.exceptions.ConnectionTimeout, opensearchpy.exceptions.TransportError) as e:
         current_app.logger.exception(f"OpenSearch error: {e}")
@@ -265,7 +265,7 @@ def get_page_ocr():
         page_number = request.args.get('page_number', 1, int)
 
         cache_key = _make_search_cache_key('ocr', request.args)
-        cached = _search_cache_get(cache_key)
+        cached = cache_get_search(cache_key)
         if cached is not None:
             return current_app.response_class(cached, content_type='text/plain')
 
@@ -287,7 +287,7 @@ def get_page_ocr():
 
             result = page_ocr_os_search(collection_id, page_number)
             ocr_text = serialize_os_page_ocr_result(result)
-            _search_cache_set(cache_key, ocr_text)
+            cache_set_search(cache_key, ocr_text)
             return current_app.response_class(ocr_text, content_type='text/plain')
 
     except (opensearchpy.exceptions.ConnectionError, opensearchpy.exceptions.ConnectionTimeout, opensearchpy.exceptions.TransportError) as e:

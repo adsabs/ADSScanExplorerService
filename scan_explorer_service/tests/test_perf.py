@@ -5,6 +5,8 @@ from flask import url_for
 from unittest.mock import patch, MagicMock
 from scan_explorer_service.tests.base import TestCaseDatabase
 from scan_explorer_service.models import Article, Base, Collection, Page
+from scan_explorer_service.utils.cache import cache_set_manifest, MANIFEST_CACHE_PREFIX
+import scan_explorer_service.utils.cache as cache_mod
 
 
 class TestManifestCache(TestCaseDatabase):
@@ -57,8 +59,7 @@ class TestManifestCache(TestCaseDatabase):
         self.app.db.session.commit()
 
     def tearDown(self):
-        import scan_explorer_service.views.manifest as m
-        m._redis_client = None
+        cache_mod._redis_client = None
         self.app.db.session.remove()
         self.app.db.drop_all()
 
@@ -88,14 +89,12 @@ class TestManifestCache(TestCaseDatabase):
         mock_r.delete = mock_delete
         mock_r.ping.return_value = True
 
-        import scan_explorer_service.views.manifest as m
-        m._redis_client = mock_r
+        cache_mod._redis_client = mock_r
         return mock_r, store
 
     def test_cache_hit_returns_cached_json(self):
         """Verifies that a cached manifest is returned directly without regeneration."""
         mock_r, store = self._mock_redis()
-        from scan_explorer_service.views.manifest import MANIFEST_CACHE_PREFIX
         store[MANIFEST_CACHE_PREFIX + self.article.id] = ('{"@type":"sc:Manifest","cached":true}', time.monotonic() + 3600)
 
         url = url_for("manifest.get_manifest", id=self.article.id)
@@ -107,7 +106,6 @@ class TestManifestCache(TestCaseDatabase):
     def test_cache_hit_returns_correct_content_type(self):
         """Verifies that cached manifest responses have application/json content type."""
         mock_r, store = self._mock_redis()
-        from scan_explorer_service.views.manifest import MANIFEST_CACHE_PREFIX
         store[MANIFEST_CACHE_PREFIX + self.collection.id] = ('{"@type":"sc:Manifest"}', time.monotonic() + 3600)
 
         url = url_for("manifest.get_manifest", id=self.collection.id)
@@ -127,8 +125,7 @@ class TestManifestCache(TestCaseDatabase):
 
         mock_r.setex = tracking_setex
 
-        from scan_explorer_service.views.manifest import _cache_set, MANIFEST_CACHE_PREFIX
-        _cache_set(self.article.id, '{"@type":"sc:Manifest"}')
+        cache_set_manifest(self.article.id, '{"@type":"sc:Manifest"}')
 
         self.assertEqual(len(setex_calls), 1)
         self.assertEqual(setex_calls[0], MANIFEST_CACHE_PREFIX + self.article.id)
@@ -136,7 +133,6 @@ class TestManifestCache(TestCaseDatabase):
     def test_cached_manifest_skips_manifest_factory(self):
         """Verifies that manifest_factory is not called when the manifest is cached."""
         mock_r, store = self._mock_redis()
-        from scan_explorer_service.views.manifest import MANIFEST_CACHE_PREFIX
         store[MANIFEST_CACHE_PREFIX + self.article.id] = ('{"@type":"sc:Manifest"}', time.monotonic() + 3600)
 
         with patch('scan_explorer_service.views.manifest.manifest_factory') as mock_factory:
@@ -148,7 +144,6 @@ class TestManifestCache(TestCaseDatabase):
     def test_404_not_cached(self):
         """Verifies that 404 responses are not stored in the cache."""
         mock_r, store = self._mock_redis()
-        from scan_explorer_service.views.manifest import MANIFEST_CACHE_PREFIX
 
         url = url_for("manifest.get_manifest", id='nonexistent')
         r = self.client.get(url)
@@ -157,10 +152,9 @@ class TestManifestCache(TestCaseDatabase):
 
     def test_redis_unavailable_falls_through(self):
         """Verifies that the endpoint still works when Redis is unavailable."""
-        import scan_explorer_service.views.manifest as m
-        m._redis_client = None
+        cache_mod._redis_client = None
 
-        with patch('scan_explorer_service.views.manifest.redis.from_url', side_effect=Exception("connection refused")):
+        with patch('scan_explorer_service.utils.cache.redis.from_url', side_effect=Exception("connection refused")):
             url = url_for("manifest.get_manifest", id=self.article.id)
             r = self.client.get(url)
             self.assertStatus(r, 200)

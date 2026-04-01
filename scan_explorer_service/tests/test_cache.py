@@ -1,9 +1,15 @@
 import unittest
 import json
+import sys
+import redis as redis_lib
 from flask import url_for
-from unittest.mock import patch, MagicMock, PropertyMock
+from unittest.mock import patch, MagicMock
+from werkzeug.datastructures import ImmutableMultiDict
 from scan_explorer_service.tests.base import TestCaseDatabase
 from scan_explorer_service.models import Base, Collection, Page, Article
+from scan_explorer_service.views.image_proxy import fetch_images
+from scan_explorer_service.views.metadata import _make_search_cache_key
+import scan_explorer_service.utils.cache as cache_mod
 
 
 class TestRedisReconnection(TestCaseDatabase):
@@ -24,59 +30,56 @@ class TestRedisReconnection(TestCaseDatabase):
     def setUp(self):
         Base.metadata.drop_all(bind=self.app.db.engine)
         Base.metadata.create_all(bind=self.app.db.engine)
-        import scan_explorer_service.views.manifest as m
+        m = cache_mod
         m._redis_client = None
 
     def tearDown(self):
-        import scan_explorer_service.views.manifest as m
+        m = cache_mod
         m._redis_client = None
         super().tearDown()
 
-    @patch('scan_explorer_service.views.manifest.redis.from_url')
+    @patch('scan_explorer_service.utils.cache.redis.from_url')
     def test_cache_get_resets_on_connection_error(self, mock_from_url):
         """Verify _redis_client is set to None after a ConnectionError so next call reconnects."""
-        import scan_explorer_service.views.manifest as m
-        import redis as redis_lib
+        m = cache_mod
         mock_client = MagicMock()
         mock_client.ping.return_value = True
         mock_from_url.return_value = mock_client
 
-        m._cache_get('test')
+        m.cache_get_manifest('test')
         self.assertIsNotNone(m._redis_client)
 
         mock_client.get.side_effect = redis_lib.ConnectionError("connection lost")
-        result = m._cache_get('test')
+        result = m.cache_get_manifest('test')
         self.assertIsNone(result)
         self.assertIsNone(m._redis_client)
 
-    @patch('scan_explorer_service.views.manifest.redis.from_url')
+    @patch('scan_explorer_service.utils.cache.redis.from_url')
     def test_cache_set_resets_on_connection_error(self, mock_from_url):
         """Verify _redis_client resets on ConnectionError during cache writes too."""
-        import scan_explorer_service.views.manifest as m
-        import redis as redis_lib
+        m = cache_mod
         mock_client = MagicMock()
         mock_client.ping.return_value = True
         mock_from_url.return_value = mock_client
 
-        m._cache_set('test', '{}')
+        m.cache_set_manifest('test', '{}')
         self.assertIsNotNone(m._redis_client)
 
         mock_client.setex.side_effect = redis_lib.ConnectionError("connection lost")
-        m._cache_set('test', '{}')
+        m.cache_set_manifest('test', '{}')
         self.assertIsNone(m._redis_client)
 
-    @patch('scan_explorer_service.views.manifest.redis.from_url')
+    @patch('scan_explorer_service.utils.cache.redis.from_url')
     def test_reconnects_after_reset(self, mock_from_url):
         """Verify a new Redis client is created after a previous connection was reset."""
-        import scan_explorer_service.views.manifest as m
-        import redis as redis_lib
+        m = cache_mod
         mock_client = MagicMock()
         mock_client.ping.return_value = True
         mock_from_url.return_value = mock_client
 
-        m._cache_get('test')
+        m.cache_get_manifest('test')
         mock_client.get.side_effect = redis_lib.ConnectionError("lost")
-        m._cache_get('test')
+        m.cache_get_manifest('test')
         self.assertIsNone(m._redis_client)
 
         mock_client2 = MagicMock()
@@ -84,14 +87,14 @@ class TestRedisReconnection(TestCaseDatabase):
         mock_client2.get.return_value = '{"cached": true}'
         mock_from_url.return_value = mock_client2
 
-        result = m._cache_get('test')
+        result = m.cache_get_manifest('test')
         self.assertEqual(result, '{"cached": true}')
         self.assertIsNotNone(m._redis_client)
 
-    @patch('scan_explorer_service.views.manifest.redis.from_url')
+    @patch('scan_explorer_service.utils.cache.redis.from_url')
     def test_get_redis_uses_lock(self, mock_from_url):
         """Verify from_url is only called once even with multiple _get_redis calls (singleton pattern)."""
-        import scan_explorer_service.views.manifest as m
+        m = cache_mod
         mock_client = MagicMock()
         mock_client.ping.return_value = True
         mock_from_url.return_value = mock_client
@@ -118,7 +121,7 @@ class TestManifestCaching(TestCaseDatabase):
     def setUp(self):
         Base.metadata.drop_all(bind=self.app.db.engine)
         Base.metadata.create_all(bind=self.app.db.engine)
-        import scan_explorer_service.views.manifest as m
+        m = cache_mod
         m._redis_client = None
 
         self.collection = Collection(type='type', journal='journal', volume='volume')
@@ -142,12 +145,12 @@ class TestManifestCaching(TestCaseDatabase):
         self.app.db.session.commit()
 
     def tearDown(self):
-        import scan_explorer_service.views.manifest as m
+        m = cache_mod
         m._redis_client = None
         super().tearDown()
 
-    @patch('scan_explorer_service.views.manifest._cache_set')
-    @patch('scan_explorer_service.views.manifest._cache_get')
+    @patch('scan_explorer_service.views.manifest.cache_set_manifest')
+    @patch('scan_explorer_service.views.manifest.cache_get_manifest')
     def test_manifest_serves_from_cache(self, mock_get, mock_set):
         """Verify manifest is generated on first request, then served from cache on second."""
         mock_get.return_value = None
@@ -162,8 +165,8 @@ class TestManifestCaching(TestCaseDatabase):
         self.assertStatus(r2, 200)
         self.assertEqual(r2.content_type, 'application/json')
 
-    @patch('scan_explorer_service.views.manifest._search_cache_set')
-    @patch('scan_explorer_service.views.manifest._search_cache_get')
+    @patch('scan_explorer_service.views.manifest.cache_set_search')
+    @patch('scan_explorer_service.views.manifest.cache_get_search')
     @patch('opensearchpy.OpenSearch')
     def test_search_cache_key_is_hashed(self, OpenSearch, mock_get, mock_set):
         """Verify search cache keys are 32-char hex MD5 hashes, not raw query strings."""
@@ -220,7 +223,6 @@ class TestFetchImagesMemoryLimit(TestCaseDatabase):
     @patch('scan_explorer_service.views.image_proxy.S3Provider')
     def test_memory_limit_stops_yielding(self, mock_s3_cls):
         """Verify fetch_images stops yielding once cumulative image size exceeds memory_limit."""
-        import sys
         chunk = b'x' * 30
         chunk_size = sys.getsizeof(chunk)
 
@@ -229,7 +231,6 @@ class TestFetchImagesMemoryLimit(TestCaseDatabase):
         mock_s3_cls.return_value = mock_s3
 
         memory_limit = chunk_size * 2 + 1
-        from scan_explorer_service.views.image_proxy import fetch_images
         images = list(fetch_images(
             self.app.db.session, self.collection, 1, 5, 100, memory_limit))
         self.assertEqual(len(images), 2)
@@ -291,7 +292,7 @@ class TestSearchValidationBeforeCache(TestCaseDatabase):
         Base.metadata.drop_all(bind=self.app.db.engine)
         Base.metadata.create_all(bind=self.app.db.engine)
 
-    @patch('scan_explorer_service.views.metadata._search_cache_get')
+    @patch('scan_explorer_service.views.metadata.cache_get_search')
     def test_empty_query_returns_400_without_cache_lookup(self, mock_cache_get):
         """Verify empty search query is rejected before any cache lookup occurs."""
         url = url_for("metadata.article_search", q='')
@@ -299,7 +300,7 @@ class TestSearchValidationBeforeCache(TestCaseDatabase):
         self.assertStatus(r, 400)
         mock_cache_get.assert_not_called()
 
-    @patch('scan_explorer_service.views.metadata._search_cache_get')
+    @patch('scan_explorer_service.views.metadata.cache_get_search')
     def test_collection_empty_query_no_cache(self, mock_cache_get):
         """Same validation-before-cache check for collection search endpoint."""
         url = url_for("metadata.collection_search", q='')
@@ -307,7 +308,7 @@ class TestSearchValidationBeforeCache(TestCaseDatabase):
         self.assertStatus(r, 400)
         mock_cache_get.assert_not_called()
 
-    @patch('scan_explorer_service.views.metadata._search_cache_get')
+    @patch('scan_explorer_service.views.metadata.cache_get_search')
     def test_page_search_empty_query_no_cache(self, mock_cache_get):
         """Same validation-before-cache check for page search endpoint."""
         url = url_for("metadata.page_search", q='')
@@ -333,9 +334,6 @@ class TestSearchCacheKeyMultiValue(TestCaseDatabase):
 
     def test_different_multi_params_produce_different_keys(self):
         """Verify multi-valued query params (e.g. field=title&field=abstract) produce distinct cache keys."""
-        from scan_explorer_service.views.metadata import _make_search_cache_key
-        from werkzeug.datastructures import ImmutableMultiDict
-
         args1 = ImmutableMultiDict([('q', 'star'), ('field', 'title')])
         args2 = ImmutableMultiDict([('q', 'star'), ('field', 'title'), ('field', 'abstract')])
 
@@ -383,8 +381,8 @@ class TestOcrCaching(TestCaseDatabase):
         self.article.pages.append(self.page)
         self.app.db.session.commit()
 
-    @patch('scan_explorer_service.views.metadata._search_cache_set')
-    @patch('scan_explorer_service.views.metadata._search_cache_get')
+    @patch('scan_explorer_service.views.metadata.cache_set_search')
+    @patch('scan_explorer_service.views.metadata.cache_get_search')
     @patch('opensearchpy.OpenSearch')
     def test_ocr_result_is_cached(self, OpenSearch, mock_cache_get, mock_cache_set):
         """Verify OCR text is stored in cache after first fetch and returned as text/plain."""
@@ -404,7 +402,7 @@ class TestOcrCaching(TestCaseDatabase):
         mock_cache_set.assert_called_once()
         self.assertEqual(mock_cache_set.call_args[0][1], 'Some OCR text here')
 
-    @patch('scan_explorer_service.views.metadata._search_cache_get')
+    @patch('scan_explorer_service.views.metadata.cache_get_search')
     def test_ocr_served_from_cache(self, mock_cache_get):
         """Verify cached OCR text is served directly without hitting OpenSearch."""
         mock_cache_get.return_value = 'Cached OCR text'
