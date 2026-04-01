@@ -6,6 +6,7 @@ from unittest.mock import patch, MagicMock
 from scan_explorer_service.tests.base import TestCaseDatabase
 from scan_explorer_service.models import Article, Base, Collection, Page
 from scan_explorer_service.utils.cache import cache_set_manifest, MANIFEST_CACHE_PREFIX
+from scan_explorer_service.views.image_proxy import fetch_images
 import scan_explorer_service.utils.cache as cache_mod
 
 
@@ -27,8 +28,7 @@ class TestManifestCache(TestCaseDatabase):
         Base.metadata.drop_all(bind=self.app.db.engine)
         Base.metadata.create_all(bind=self.app.db.engine)
 
-        import scan_explorer_service.views.manifest as m
-        m._redis_client = None
+        cache_mod._redis_client = None
 
         self.collection = Collection(type='type', journal='cacheJ', volume='0099')
         self.app.db.session.add(self.collection)
@@ -303,7 +303,6 @@ class TestParallelFetchImages(TestCaseDatabase):
         mock_s3.read_object_s3.return_value = b'image_data'
         mock_s3_cls.return_value = mock_s3
 
-        from scan_explorer_service.views.image_proxy import fetch_images
         images = list(fetch_images(
             self.app.db.session, self.collection, 1, 5, 100,
             100 * 1024 * 1024))
@@ -317,7 +316,6 @@ class TestParallelFetchImages(TestCaseDatabase):
         mock_s3.read_object_s3.return_value = b'x' * 1000
         mock_s3_cls.return_value = mock_s3
 
-        from scan_explorer_service.views.image_proxy import fetch_images
         images = list(fetch_images(
             self.app.db.session, self.collection, 1, 5, 100,
             500))
@@ -330,7 +328,6 @@ class TestParallelFetchImages(TestCaseDatabase):
         mock_s3.read_object_s3.side_effect = [b'data1', None, b'data3', b'data4', b'data5']
         mock_s3_cls.return_value = mock_s3
 
-        from scan_explorer_service.views.image_proxy import fetch_images
         images = list(fetch_images(
             self.app.db.session, self.collection, 1, 5, 100,
             100 * 1024 * 1024))
@@ -343,7 +340,6 @@ class TestParallelFetchImages(TestCaseDatabase):
         mock_s3.read_object_s3.return_value = b'image_data'
         mock_s3_cls.return_value = mock_s3
 
-        from scan_explorer_service.views.image_proxy import fetch_images
         list(fetch_images(
             self.app.db.session, self.collection, 1, 5, 100,
             100 * 1024 * 1024))

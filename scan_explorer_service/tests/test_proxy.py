@@ -3,9 +3,8 @@ import json
 from flask import url_for
 from unittest.mock import MagicMock, patch
 from scan_explorer_service.tests.base import TestCaseDatabase
-from scan_explorer_service.views.image_proxy import image_proxy, get_item
+from scan_explorer_service.views.image_proxy import image_proxy, get_item, get_pages, fetch_images, fetch_object, fetch_article, img2pdf
 from scan_explorer_service.models import Article, Base, Collection, Page
-from scan_explorer_service.views.image_proxy import img2pdf, fetch_images, fetch_object
 
 class TestProxy(TestCaseDatabase):
     """Tests for image proxy, thumbnail, PDF, and S3 fetch endpoints."""
@@ -360,7 +359,6 @@ class TestProxyNullHandling(TestCaseDatabase):
 
     def test_get_pages_article_no_pages_raises(self):
         """Verifies that get_pages raises an exception for an article with no pages."""
-        from scan_explorer_service.views.image_proxy import get_pages
         with self.app.app_context():
             with self.assertRaises(Exception) as ctx:
                 get_pages(self.article_no_pages, self.app.db.session, 1, 10, 100)
@@ -370,7 +368,6 @@ class TestProxyNullHandling(TestCaseDatabase):
     def test_fetch_article_exception_no_unbound_local(self, mock_fetch_object):
         """Verifies that fetch_article handles S3 exceptions without an UnboundLocalError."""
         mock_fetch_object.side_effect = ValueError("S3 error")
-        from scan_explorer_service.views.image_proxy import fetch_article
 
         result = fetch_article(self.article_no_pages, 100 * 1024 * 1024)
         self.assertIsNone(result)
