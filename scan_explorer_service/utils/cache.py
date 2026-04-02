@@ -6,7 +6,7 @@ from flask import current_app
 
 logger = logging.getLogger(__name__)
 
-MANIFEST_CACHE_TTL = 3600
+MANIFEST_CACHE_TTL = 86400
 MANIFEST_CACHE_PREFIX = 'scan:manifest:'
 SEARCH_CACHE_TTL = 60
 SEARCH_CACHE_PREFIX = 'scan:search:'
