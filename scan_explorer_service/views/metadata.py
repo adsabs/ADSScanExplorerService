@@ -7,8 +7,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from flask_discoverer import advertise
 from scan_explorer_service.utils.search_utils import *
 from scan_explorer_service.views.view_utils import ApiErrors
+from scan_explorer_service.utils.cache import cache_delete_manifest, cache_get_search, cache_set_search
 from scan_explorer_service.open_search import EsFields, page_os_search, aggregate_search, page_ocr_os_search
+import opensearchpy
 import requests
+import hashlib
+import json as json_lib
 
 bp_metadata = Blueprint('metadata', __name__, url_prefix='/metadata')
 
@@ -128,6 +132,7 @@ def put_collection():
                         pg_insert(page_article_association_table).values(page_article_data).on_conflict_do_nothing()
                     )
                 session.commit()
+                cache_delete_manifest(collection.id)
 
                 return jsonify({'id': collection.id}), 200
             except Exception:
@@ -163,12 +168,23 @@ def put_page():
         return jsonify(message='Invalid page json'), 400
 
 
+def _make_search_cache_key(prefix, args):
+    """Build an MD5 cache key from the search type prefix and all query params (including multi-valued)."""
+    raw = prefix + str(sorted(args.items(multi=True)))
+    return hashlib.md5(raw.encode()).hexdigest()
+
+
 @advertise(scopes=['api'], rate_limit=[300, 3600*24])
 @bp_metadata.route('/article/search', methods=['GET'])
 def article_search():
     """Search for an article using one or some of the available keywords"""
     try:
         qs, qs_dict, page, limit, sort = parse_query_args(request.args)
+
+        cache_key = _make_search_cache_key('article', request.args)
+        cached = cache_get_search(cache_key)
+        if cached is not None:
+            return current_app.response_class(cached, content_type='application/json')
         result = aggregate_search(qs, EsFields.article_id, page, limit, sort)
         text_query = ''
         if SearchOptions.FullText.value in qs_dict.keys():
@@ -180,7 +196,12 @@ def article_search():
             collection_count = aggregate_search(qs, EsFields.volume_id, page, limit, sort)['aggregations']['total_count']['value']
             page_count = page_os_search(qs, page, limit, sort)['hits']['total']['value']
         agg_limit = current_app.config.get("OPEN_SEARCH_AGG_BUCKET_LIMIT", 10000)
-        return jsonify(serialize_os_article_result(result, page, limit, text_query, collection_count, page_count, agg_limit))
+        response_data = serialize_os_article_result(result, page, limit, text_query, collection_count, page_count, agg_limit)
+        cache_set_search(cache_key, json_lib.dumps(response_data))
+        return jsonify(response_data)
+    except (opensearchpy.exceptions.ConnectionError, opensearchpy.exceptions.ConnectionTimeout, opensearchpy.exceptions.TransportError) as e:
+        current_app.logger.exception(f"OpenSearch error: {e}")
+        return jsonify(message='Search service temporarily unavailable', type=ApiErrors.SearchError.value), 503
     except Exception as e:
         current_app.logger.exception(f"An exception has occurred: {e}")
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
@@ -192,12 +213,22 @@ def collection_search():
     """Search for a collection using one or some of the available keywords"""
     try:
         qs, qs_dict, page, limit, sort = parse_query_args(request.args)
+
+        cache_key = _make_search_cache_key('collection', request.args)
+        cached = cache_get_search(cache_key)
+        if cached is not None:
+            return current_app.response_class(cached, content_type='application/json')
         result = aggregate_search(qs, EsFields.volume_id, page, limit, sort)
         text_query = ''
         if SearchOptions.FullText.value in qs_dict.keys():
             text_query = qs_dict[SearchOptions.FullText.value]
         agg_limit = current_app.config.get("OPEN_SEARCH_AGG_BUCKET_LIMIT", 10000)
-        return jsonify(serialize_os_collection_result(result, page, limit, text_query, agg_limit))
+        response_data = serialize_os_collection_result(result, page, limit, text_query, agg_limit)
+        cache_set_search(cache_key, json_lib.dumps(response_data))
+        return jsonify(response_data)
+    except (opensearchpy.exceptions.ConnectionError, opensearchpy.exceptions.ConnectionTimeout, opensearchpy.exceptions.TransportError) as e:
+        current_app.logger.exception(f"OpenSearch error: {e}")
+        return jsonify(message='Search service temporarily unavailable', type=ApiErrors.SearchError.value), 503
     except Exception as e:
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
 
@@ -207,11 +238,21 @@ def page_search():
     """Search for a page using one or some of the available keywords"""
     try:
         qs, qs_dict, page, limit, sort = parse_query_args(request.args)
+
+        cache_key = _make_search_cache_key('page', request.args)
+        cached = cache_get_search(cache_key)
+        if cached is not None:
+            return current_app.response_class(cached, content_type='application/json')
         result = page_os_search(qs, page, limit, sort)
         text_query = ''
         if SearchOptions.FullText.value in qs_dict.keys():
             text_query = qs_dict[SearchOptions.FullText.value]
-        return jsonify(serialize_os_page_result(result, page, limit, text_query))
+        response_data = serialize_os_page_result(result, page, limit, text_query)
+        cache_set_search(cache_key, json_lib.dumps(response_data))
+        return jsonify(response_data)
+    except (opensearchpy.exceptions.ConnectionError, opensearchpy.exceptions.ConnectionTimeout, opensearchpy.exceptions.TransportError) as e:
+        current_app.logger.exception(f"OpenSearch error: {e}")
+        return jsonify(message='Search service temporarily unavailable', type=ApiErrors.SearchError.value), 503
     except Exception as e:
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
 
@@ -222,6 +263,11 @@ def get_page_ocr():
     try:
         id = request.args.get('id')
         page_number = request.args.get('page_number', 1, int)
+
+        cache_key = _make_search_cache_key('ocr', request.args)
+        cached = cache_get_search(cache_key)
+        if cached is not None:
+            return current_app.response_class(cached, content_type='text/plain')
 
         with current_app.session_scope() as session:
             item: Union[Article, Collection] = (
@@ -240,7 +286,12 @@ def get_page_ocr():
                 collection_id = item.id
 
             result = page_ocr_os_search(collection_id, page_number)
-            return serialize_os_page_ocr_result(result)
+            ocr_text = serialize_os_page_ocr_result(result)
+            cache_set_search(cache_key, ocr_text)
+            return current_app.response_class(ocr_text, content_type='text/plain')
 
+    except (opensearchpy.exceptions.ConnectionError, opensearchpy.exceptions.ConnectionTimeout, opensearchpy.exceptions.TransportError) as e:
+        current_app.logger.exception(f"OpenSearch error: {e}")
+        return jsonify(message='Search service temporarily unavailable', type=ApiErrors.SearchError.value), 503
     except Exception as e:
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400

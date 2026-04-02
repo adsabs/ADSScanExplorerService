@@ -14,6 +14,11 @@ import io
 import sys
 import time
 
+try:
+    from gevent.pool import Pool as GeventPool
+except ImportError:
+    GeventPool = None
+
 bp_proxy = Blueprint('proxy', __name__, url_prefix='/image')
 
 
@@ -51,6 +56,7 @@ def image_proxy(path):
 
     @stream_with_context
     def generate():
+        """Stream the upstream response body chunk by chunk to avoid buffering the full image in memory."""
         for chunk in r.raw.stream(decode_content=False):
             yield chunk
 
@@ -80,16 +86,19 @@ def image_proxy_thumbnail():
         return jsonify(Message=str(e)), 400
 
 def get_item(session, id):
+    """Look up an Article or Collection by ID, raising if neither exists."""
     item: Union[Article, Collection] = (
                 session.query(Article).filter(Article.id == id).one_or_none()
                 or session.query(Collection).filter(Collection.id == id).one_or_none())
     if not item:
-        raise Exception("ID: " + id + " not found")
+        raise Exception("ID: " + str(id) + " not found")
 
     return item
 
 
 def get_pages(item, session, page_start, page_end, page_limit):
+    """Query pages for an Article or Collection within the given page range.
+    For articles, page numbers are relative to the article's first page in the volume."""
     if isinstance(item, Article):
         first_page = item.pages.first()
         if first_page is None:
@@ -105,32 +114,52 @@ def get_pages(item, session, page_start, page_end, page_limit):
     return query
 
 
-@stream_with_context
 def fetch_images(session, item, page_start, page_end, page_limit, memory_limit):
-    n_pages = 0
-    memory_sum = 0
+    """Yield page images from S3, stopping when memory_limit is exceeded.
+    Uses gevent pool for parallel fetching when available."""
+    
     query = get_pages(item, session, page_start, page_end, page_limit)
-    for page in query.all():
+    pages = query.all()
 
-        n_pages += 1
+    page_objects = []
+    for page in pages[:page_limit]:
+        image_path, fmt = page.image_path_basic
+        object_name = '/'.join(image_path) + fmt
+        page_objects.append(object_name)
 
-        current_app.logger.debug(f"Generating image for page: {n_pages}")
-        if n_pages > page_limit:
-            break
-        if memory_sum > memory_limit:
-            current_app.logger.error(f"Memory limit reached: {memory_sum} > {memory_limit}")
-            break
-        image_path, format = page.image_path_basic
-        object_name = '/'.join(image_path)
-        object_name += format
+    config = current_app.config
+    app_logger = current_app.logger
+    s3 = S3Provider(config, 'AWS_BUCKET_NAME_IMAGE')
 
-        im_data = fetch_object(object_name, 'AWS_BUCKET_NAME_IMAGE')
-        memory_sum += sys.getsizeof(im_data)
+    def _fetch(obj_name):
+        return s3.read_object_s3(obj_name)
 
-        yield im_data
+    pool = None
+    if GeventPool is not None:
+        pool = GeventPool(size=20)
+        # maxsize=4 limits prefetch buffering to avoid holding too many images in memory at once
+        results = pool.imap(_fetch, page_objects, maxsize=4)
+    else:
+        results = (_fetch(obj) for obj in page_objects)
+
+    try:
+        memory_sum = 0
+        for im_data in results:
+            if not im_data:
+                continue
+            memory_sum += sys.getsizeof(im_data)
+            if memory_sum > memory_limit:
+                app_logger.error(f"Memory limit reached: {memory_sum} > {memory_limit}")
+                break
+            yield im_data
+    finally:
+        if pool is not None:
+            pool.join(timeout=5)
+            pool.kill(block=False)
 
 
 def fetch_object(object_name, bucket_name):
+    """Download a single object from S3, raising ValueError if the content is empty."""
     file_content = S3Provider(current_app.config, bucket_name).read_object_s3(object_name)
     if not file_content:
         current_app.logger.error(f"Failed to fetch content for {object_name}. File might be empty.")
@@ -139,6 +168,7 @@ def fetch_object(object_name, bucket_name):
 
 
 def fetch_article(item, memory_limit):
+    """Try to fetch a pre-rendered PDF for an article from the ads-classic-pdf S3 bucket."""
     object_name = f'{item.id}.pdf'.lower()
     try:
         full_path = f'pdfs/{object_name}'
@@ -160,6 +190,7 @@ def fetch_article(item, memory_limit):
 
 
 def generate_pdf(item, session, page_start, page_end, page_limit, memory_limit):
+    """Return a pre-rendered PDF for articles if available, otherwise generate one from page images."""
     if isinstance(item, Article):
         response = fetch_article(item, memory_limit)
         if response:
@@ -181,6 +212,12 @@ def pdf_save():
         page_end = request.args.get('page_end', math.inf, int)
         memory_limit = current_app.config.get("IMAGE_PDF_MEMORY_LIMIT")
         page_limit = current_app.config.get("IMAGE_PDF_PAGE_LIMIT")
+
+        if page_end != math.inf and (page_end - page_start + 1) > page_limit:
+            return jsonify(Message=f"Requested {page_end - page_start + 1} pages exceeds limit of {page_limit}"), 400
+
+        if not id:
+            return jsonify(Message="Missing required parameter: id"), 400
 
         with current_app.session_scope() as session:
 

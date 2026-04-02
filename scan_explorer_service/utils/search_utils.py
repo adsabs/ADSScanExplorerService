@@ -17,6 +17,7 @@ class SearchOptions(enum.Enum):
     Volume = 'volume'
 
 class EsFields(str, enum.Enum):
+    """OpenSearch field name mappings for indexed scan documents."""
     article_id = 'article_bibcodes'
     article_id_lowercase = 'article_bibcodes_lowercase'
     volume_id = 'volume_id'
@@ -44,6 +45,7 @@ query_translations = dict({
 })
 
 class OrderOptions(str, enum.Enum):
+    """Sort order options for search results."""
     Relevance_desc = 'relevance_desc'
     Relevance_asc = 'relevance_asc'
     Bibcode_desc = 'bibcode_desc'
@@ -52,7 +54,10 @@ class OrderOptions(str, enum.Enum):
     Collection_asc = 'collection_asc'
 
 def parse_query_args(args):
+    """Parse HTTP request args into a search query string, field dict, pagination, and sort order."""
     qs = re.sub(':\s*', ':', args.get('q', '', str))
+    if not qs or not qs.strip():
+        raise ValueError('Query string is required')
 
     qs, qs_dict = parse_query_string(qs)
 
@@ -65,6 +70,7 @@ def parse_query_args(args):
     return qs, qs_dict, page, limit, sort
 
 def parse_query_string(qs):
+    """Split a raw query string into an OpenSearch query and a dict of field:value filters."""
     qs_to_split = qs.replace('[', '"[').replace(']',']"')
     qs_arr = [q for q in shlex.split(qs_to_split) if ':' in q]
     qs_dict = {}
@@ -96,6 +102,7 @@ def parse_query_string(qs):
     return qs, qs_dict
 
 def parse_sorting_option(sort_input: str):
+    """Convert a sort string to an OrderOptions enum, defaulting to Bibcode_desc."""
     sort = OrderOptions.Bibcode_desc
     if sort_input:
         for sort_opt in OrderOptions:
@@ -114,7 +121,9 @@ def check_query(qs_dict: dict):
     check_page_color(qs_dict)
     check_project(qs_dict)
 
-def check_page_type(qs_dict: dict): 
+def check_page_type(qs_dict: dict):
+    """Validate and normalize the pagetype filter value to match the PageType enum."""
+
     if SearchOptions.PageType.value in qs_dict.keys():
         page_type = qs_dict[SearchOptions.PageType.value]
         valid_types = [p.name for p in PageType]
@@ -127,7 +136,9 @@ def check_page_type(qs_dict: dict):
                 return
         raise Exception("%s is not a valid page type, %s is possible choices"% (page_type, str(valid_types)))
 
-def check_page_color(qs_dict: dict): 
+def check_page_color(qs_dict: dict):
+    """Validate and normalize the pagecolor filter value to match the PageColor enum."""
+
     if SearchOptions.PageColor.value in qs_dict.keys():
         page_color = qs_dict[SearchOptions.PageColor.value]
         valid_types = [p.name for p in PageColor]
@@ -140,7 +151,9 @@ def check_page_color(qs_dict: dict):
                 return
         raise Exception("%s is not a valid page color, %s is possible choices"% (page_color, str(valid_types)))
 
-def check_project(qs_dict: dict): 
+def check_project(qs_dict: dict):
+    """Validate and normalize the project filter value against known project names."""
+
     if SearchOptions.Project.value in qs_dict.keys():
         project = qs_dict[SearchOptions.Project.value]
         valid_types = ['PHaEDRA', 'Historical Literature', 'Microfilm Scanning']
@@ -155,6 +168,7 @@ def check_project(qs_dict: dict):
         raise Exception("%s is not a valid project, %s is possible choices"% (project, str(valid_types)))
 
 def serialize_os_agg_page_bucket(bucket: dict):
+    """Convert an OpenSearch page hit into a page result dict with collection and label info."""
     id = bucket['_source']['page_id']
     volume_id = bucket['_source']['volume_id']
     label = bucket['_source']['page_label']
@@ -164,6 +178,7 @@ def serialize_os_agg_page_bucket(bucket: dict):
     return {'id': id, 'collection_id':volume_id, 'journal': journal, 'volume': volume, 'label':label, 'volume_page_num': page_number}
 
 def serialize_os_page_result(result: dict, page: int, limit: int, contentQuery):
+    """Serialize an OpenSearch page search response into a paginated result dict."""
     total_count = result['hits']['total']['value']
     page_count = int(math.ceil(min(total_count,10000) / limit))    
     es_buckets = result['hits']['hits']
@@ -172,18 +187,21 @@ def serialize_os_page_result(result: dict, page: int, limit: int, contentQuery):
         'items': [serialize_os_agg_page_bucket(b) for b in es_buckets]}
 
 def serialize_os_page_ocr_result(result: dict):
+    """Extract the OCR text from an OpenSearch page result, raising if no page is found."""
     es_buckets = result['hits']['hits']
     if len(es_buckets) < 1:
         raise Exception("No page with those parameters found")
     return es_buckets[0]['_source']['text']
 
 def serialize_os_agg_collection_bucket(bucket: dict):
+    """Convert an OpenSearch collection aggregation bucket into a collection result dict."""
     id = bucket['key']
     journal = id[0:5]
     volume = id[5:9]
     return {'id': id, 'journal': journal, 'volume': volume, 'pages': bucket['doc_count']}
 
 def serialize_os_collection_result(result: dict, page: int, limit: int, contentQuery, agg_bucket_limit: int = 10000):
+    """Serialize an OpenSearch collection aggregation response into a paginated result dict."""
     total_count = result['aggregations']['total_count']['value']
     page_count = int(math.ceil(min(total_count, agg_bucket_limit) / limit))
     es_buckets = result['aggregations']['ids']['buckets']
@@ -192,10 +210,12 @@ def serialize_os_collection_result(result: dict, page: int, limit: int, contentQ
         'items': [serialize_os_agg_collection_bucket(b) for b in es_buckets]}
 
 def serialize_os_agg_article_bucket(bucket: dict):
+    """Convert an OpenSearch article aggregation bucket into an article result dict."""
     id = bucket['key']
     return {'id': id, 'bibcode': id, 'pages': bucket['doc_count']}
 
 def serialize_os_article_result(result: dict, page: int, limit: int, contentQuery = '', extra_col_count = 0, extra_page_count = 0, agg_bucket_limit: int = 10000):
+    """Serialize an OpenSearch article aggregation response into a paginated result dict."""
     total_count = result['aggregations']['total_count']['value']
     page_count = int(math.ceil(min(total_count, agg_bucket_limit) / limit))
     es_buckets = result['aggregations']['ids']['buckets']

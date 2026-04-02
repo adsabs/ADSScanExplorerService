@@ -3,7 +3,22 @@ import opensearchpy
 from flask import current_app
 from scan_explorer_service.utils.search_utils import EsFields, OrderOptions
 
+
+def _get_os_client():
+    """Return a singleton OpenSearch client for the current Flask app context."""
+    if not hasattr(current_app, '_os_client') or current_app._os_client is None:
+        url = current_app.config.get('OPEN_SEARCH_URL')
+        current_app._os_client = opensearchpy.OpenSearch(
+            url,
+            timeout=30,
+            max_retries=2,
+            retry_on_timeout=True,
+            pool_maxsize=20,
+        )
+    return current_app._os_client
+
 def create_query_string_query(query_string: str):
+    """Build an OpenSearch query_string query dict with default fields and AND operator."""
     query =  {
         "query": {
             "query_string": {
@@ -16,6 +31,7 @@ def create_query_string_query(query_string: str):
     return query
 
 def append_aggregate(query: dict, agg_field: EsFields, page: int, size: int, sort: OrderOptions):
+    """Add a terms aggregation with bucket sort and pagination to an OpenSearch query."""
     from_number = (page - 1) * size
     query['size'] = 0
     if sort == OrderOptions.Bibcode_desc or sort == OrderOptions.Bibcode_asc:
@@ -60,6 +76,7 @@ def append_aggregate(query: dict, agg_field: EsFields, page: int, size: int, sor
     return query
 
 def append_highlight(query: dict):
+    """Add text field highlighting to an OpenSearch query."""
     query['highlight'] = {
         "fields": {
             "text": {}
@@ -70,12 +87,14 @@ def append_highlight(query: dict):
 
 
 def es_search(query: dict) -> Iterator[str]:
-    es = opensearchpy.OpenSearch(current_app.config.get('OPEN_SEARCH_URL'))
+    """Execute an OpenSearch query against the configured index and return the raw response."""
+    es = _get_os_client()
     resp = es.search(index=current_app.config.get(
         'OPEN_SEARCH_INDEX'), body=query)
     return resp
 
 def text_search_highlight(text: str, filter_field: EsFields, filter_value: str):
+    """Search for text with an optional field filter and yield page IDs with highlight snippets."""
     query_string = text
     if filter_field:
         query_string += " " + filter_field.value + ":" + str(filter_value)
@@ -101,6 +120,7 @@ def text_search_highlight(text: str, filter_field: EsFields, filter_value: str):
         }
 
 def set_page_ocr_fields(query: dict) -> dict:
+    """Restrict the query's _source to include only the OCR text field."""
     if '_source' in query.keys():
         query["_source"]["include"].append("text")
     else:
@@ -108,10 +128,12 @@ def set_page_ocr_fields(query: dict) -> dict:
     return query
 
 def set_page_search_fields(query: dict) -> dict:
+    """Restrict the query's _source to page identification fields only."""
     query["_source"] = {"include": ["page_id", "volume_id", "page_label", "page_number"]}
     return query
 
 def page_os_search(qs: str, page, limit, sort):
+    """Run a paginated page-level search against OpenSearch with sorting."""
     qs = qs.replace("&", "+")
     query = create_query_string_query(qs)
     query = set_page_search_fields(query)
@@ -137,6 +159,7 @@ def page_os_search(qs: str, page, limit, sort):
     return es_result
 
 def page_ocr_os_search(collection_id: str, page_number:int):
+    """Fetch the OCR text for a specific page within a collection from OpenSearch."""
     qs = EsFields.volume_id_lowercase + ":" + collection_id + " " + EsFields.page_number + ":" + str(page_number)
     query = create_query_string_query(qs)
     query = set_page_ocr_fields(query)
@@ -144,6 +167,7 @@ def page_ocr_os_search(collection_id: str, page_number:int):
     return es_result
 
 def aggregate_search(qs: str, aggregate_field, page, limit, sort):
+    """Run a paginated aggregation search grouped by the specified field."""
     qs = qs.replace("&", "+")
     query = create_query_string_query(qs)
     query = append_aggregate(query, aggregate_field, page, limit, sort)
