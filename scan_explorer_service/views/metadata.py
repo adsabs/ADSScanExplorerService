@@ -17,7 +17,7 @@ import json as json_lib
 bp_metadata = Blueprint('metadata', __name__, url_prefix='/metadata')
 
 
-@advertise(scopes=['api'], rate_limit=[300, 3600*24])
+@advertise(scopes=['api'], rate_limit=[5000, 3600*24])
 @bp_metadata.route('/article/extra/<string:bibcode>', methods=['GET'])
 def article_extra(bibcode: str):
     """Route that fetches additional metadata about an article from the ADS search service """
@@ -40,7 +40,7 @@ def article_extra(bibcode: str):
             return jsonify(message='Failed to retrieve external ADS article metadata'), 500
     return {}
 
-@advertise(scopes=['api'], rate_limit=[300, 3600*24])
+@advertise(scopes=['api'], rate_limit=[5000, 3600*24])
 @bp_metadata.route('/article/<string:bibcode>/collection', methods=['GET'])
 def article_collection(bibcode: str):
     """Route that fetches collection from an article """
@@ -54,7 +54,7 @@ def article_collection(bibcode: str):
         page_in_collection = first_page.volume_running_page_num
         return jsonify({'id': article.collection_id, 'selected_page': page_in_collection}), 200
 
-@advertise(scopes=['ads:scan-explorer'], rate_limit=[300, 3600*24])
+@advertise(scopes=['ads:scan-explorer'], rate_limit=[5000, 3600*24])
 @bp_metadata.route('/article', methods=['PUT'])
 def put_article():
     """Create a new or overwrite an existing article"""
@@ -72,7 +72,7 @@ def put_article():
         return jsonify(message='Invalid article json'), 400
 
 
-@advertise(scopes=['ads:scan-explorer'], rate_limit=[300, 3600*24])
+@advertise(scopes=['ads:scan-explorer'], rate_limit=[5000, 3600*24])
 @bp_metadata.route('/collection', methods=['PUT'])
 def put_collection():
     """ Create a new or overwrite an existing collection """
@@ -142,7 +142,7 @@ def put_collection():
         return jsonify(message='Invalid collection json'), 400
 
 
-@advertise(scopes=['ads:scan-explorer'], rate_limit=[300, 3600*24])
+@advertise(scopes=['ads:scan-explorer'], rate_limit=[5000, 3600*24])
 @bp_metadata.route('/page', methods=['PUT'])
 def put_page():
     """Create a new or overwrite an existing page """
@@ -174,7 +174,7 @@ def _make_search_cache_key(prefix, args):
     return hashlib.md5(raw.encode()).hexdigest()
 
 
-@advertise(scopes=['api'], rate_limit=[300, 3600*24])
+@advertise(scopes=['api'], rate_limit=[5000, 3600*24])
 @bp_metadata.route('/article/search', methods=['GET'])
 def article_search():
     """Search for an article using one or some of the available keywords"""
@@ -207,7 +207,7 @@ def article_search():
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
 
 
-@advertise(scopes=['api'], rate_limit=[300, 3600*24])
+@advertise(scopes=['api'], rate_limit=[5000, 3600*24])
 @bp_metadata.route('/collection/search', methods=['GET'])
 def collection_search():
     """Search for a collection using one or some of the available keywords"""
@@ -232,7 +232,7 @@ def collection_search():
     except Exception as e:
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
 
-@advertise(scopes=['api'], rate_limit=[300, 3600*24])
+@advertise(scopes=['api'], rate_limit=[5000, 3600*24])
 @bp_metadata.route('/page/search', methods=['GET'])
 def page_search():
     """Search for a page using one or some of the available keywords"""
@@ -256,7 +256,7 @@ def page_search():
     except Exception as e:
         return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
 
-@advertise(scopes=['api'], rate_limit=[300, 3600*24])
+@advertise(scopes=['api'], rate_limit=[5000, 3600*24])
 @bp_metadata.route('/page/ocr', methods=['GET'])
 def get_page_ocr():
     """Get the OCR for a page using it's parents id and page number"""

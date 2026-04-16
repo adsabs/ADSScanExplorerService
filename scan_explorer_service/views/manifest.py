@@ -32,7 +32,7 @@ def before_request():
     manifest_factory.set_base_image_uri(image_proxy)
 
 
-@advertise(scopes=['api'], rate_limit=[300, 3600*24])
+@advertise(scopes=['api'], rate_limit=[5000, 3600*24])
 @bp_manifest.route('/<string:id>/manifest.json', methods=['GET'])
 def get_manifest(id: str):
     """ Creates an IIIF manifest from an article or Collection"""
@@ -77,7 +77,7 @@ def get_manifest(id: str):
         return jsonify(exception='Article not found'), 404
 
 
-@advertise(scopes=['api'], rate_limit=[300, 3600*24])
+@advertise(scopes=['api'], rate_limit=[5000, 3600*24])
 @bp_manifest.route('/canvas/<string:page_id>.json', methods=['GET'])
 def get_canvas(page_id: str):
     """ Creates an IIIF canvas from a page"""
@@ -90,7 +90,7 @@ def get_canvas(page_id: str):
             return jsonify(exception='Page not found'), 404
 
 
-@advertise(scopes=['api'], rate_limit=[300, 3600*24])
+@advertise(scopes=['api'], rate_limit=[5000, 3600*24])
 @bp_manifest.route('/<string:id>/search', methods=['GET'])
 def search(id: str):
     """Search OCR text within an article or collection, returning IIIF annotations."""
