@@ -182,7 +182,7 @@ def fetch_article(item, memory_limit):
         return send_file(
             file_stream,
             as_attachment=True,
-            attachment_filename=object_name,
+            download_name=object_name,
             mimetype='application/pdf'
         )
     except Exception as e:

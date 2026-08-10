@@ -1,7 +1,6 @@
 from flask import current_app
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, ForeignKey, Integer, String, Table, UniqueConstraint, Enum, Index, or_
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy_utils.models import Timestamp
 from scan_explorer_service.utils.utils import url_for_proxy
 import enum

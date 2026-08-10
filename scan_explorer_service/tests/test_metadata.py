@@ -317,7 +317,7 @@ class TestNullPageHandling(TestCaseDatabase):
     def test_collection_serialized_no_pages(self):
         """S3: Collection.serialized returns thumbnail=None when no pages exist."""
         with self.app.app_context():
-            col = self.app.db.session.query(Collection).get(self.collection_id)
+            col = self.app.db.session.get(Collection, self.collection_id)
             data = col.serialized
             self.assertIsNone(data['thumbnail'])
             self.assertEqual(data['pages'], 0)
@@ -325,7 +325,7 @@ class TestNullPageHandling(TestCaseDatabase):
     def test_article_serialized_no_pages(self):
         """S3: Article.serialized returns thumbnail=None when no pages exist."""
         with self.app.app_context():
-            art = self.app.db.session.query(Article).get(self.article_id)
+            art = self.app.db.session.get(Article, self.article_id)
             data = art.serialized
             self.assertIsNone(data['thumbnail'])
             self.assertEqual(data['pages'], 0)
