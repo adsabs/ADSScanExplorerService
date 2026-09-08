@@ -32,17 +32,15 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-python@v2
+    - uses: actions/checkout@v7
+    - uses: actions/setup-python@v5
       with:
-        python-version: '3.8'
+        python-version: '3.12'
 
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade wheel setuptools==57 pip
-        pip install -r requirements.txt
-        pip install -r dev-requirements.txt
-        
+        pip install ".[dev]"
+
     - name: Run unittests
       run: |
          py.test

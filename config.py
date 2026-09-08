@@ -14,7 +14,7 @@ IMAGE_PDF_PAGE_LIMIT = 100 # Limit pn number of pages which can be downloaded as
 IMAGE_PROXY_RETRIES = 1 # Number of retries for failed upstream image requests (Cantaloupe cold-cache)
 IMAGE_PROXY_RETRY_DELAY = 2 # Seconds to wait between retries
 
-SQLALCHEMY_DATABASE_URI = 'postgres://scan_explorer:scan_explorer@postgres_service/scan_explorer_service'
+SQLALCHEMY_DATABASE_URI = 'postgresql+psycopg2://scan_explorer:scan_explorer@postgres_service/scan_explorer_service'
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 OPEN_SEARCH_URL = 'http://opensearch-node1:9200'

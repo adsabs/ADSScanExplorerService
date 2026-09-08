@@ -55,7 +55,7 @@ class OrderOptions(str, enum.Enum):
 
 def parse_query_args(args):
     """Parse HTTP request args into a search query string, field dict, pagination, and sort order."""
-    qs = re.sub(':\s*', ':', args.get('q', '', str))
+    qs = re.sub(r':\s*', ':', args.get('q', '', str))
     if not qs or not qs.strip():
         raise ValueError('Query string is required')
 
@@ -88,7 +88,7 @@ def parse_query_string(qs):
 
     check_query(qs_dict)
     #Adds a () around each free search to force OS to look for each individual entry against all default fields
-    for parameter in re.split('\s+', qs_only_free):
+    for parameter in re.split(r'\s+', qs_only_free):
         if parameter.upper() not in ['AND', 'OR', '']:
             qs = qs.replace(str(parameter), "(" + str(parameter) + ")")
 
