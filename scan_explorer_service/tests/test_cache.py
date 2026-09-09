@@ -414,5 +414,123 @@ class TestOcrCaching(TestCaseDatabase):
         self.assertIn('text/plain', r.content_type)
 
 
+
+class TestVariantIsolation(TestCaseDatabase):
+    """Two deployments serving different hostnames must not share cached documents."""
+
+    def create_app(self):
+        from scan_explorer_service.app import create_app
+        return create_app(**{
+            'SQLALCHEMY_DATABASE_URI': self.postgresql_url,
+            'TESTING': True,
+            'PROXY_SERVER': 'https://ui.adsabs.harvard.edu:443',
+            'PROXY_PREFIX': '/v1/scan',
+        })
+
+    def setUp(self):
+        super().setUp()
+        cache_mod._redis_client = None
+
+    def tearDown(self):
+        cache_mod._redis_client = None
+        super().tearDown()
+
+    @patch('scan_explorer_service.utils.cache.redis.from_url')
+    def test_variants_do_not_share_cached_manifests(self, mock_from_url):
+        store = {}
+        client = MagicMock()
+        client.ping.return_value = True
+        client.setex.side_effect = lambda k, ttl, v: store.__setitem__(k, v)
+        client.get.side_effect = store.get
+        mock_from_url.return_value = client
+
+        bibcode = '1993ASPC...52..132K'
+        ads_manifest = '{"@id":"https://ui.adsabs.harvard.edu:443/v1/scan/..."}'
+
+        cache_mod.cache_set_manifest(bibcode, ads_manifest)
+        self.assertEqual(cache_mod.cache_get_manifest(bibcode), ads_manifest)
+
+        self.app.config['PROXY_SERVER'] = 'https://scixplorer.org:443'
+        self.app.config['PROXY_PREFIX'] = '/v1/scix-scan'
+
+        self.assertIsNone(
+            cache_mod.cache_get_manifest(bibcode),
+            'the SciX deployment must not read the manifest cached by the ADS deployment')
+
+        scix_manifest = '{"@id":"https://scixplorer.org:443/v1/scix-scan/..."}'
+        cache_mod.cache_set_manifest(bibcode, scix_manifest)
+        self.assertEqual(cache_mod.cache_get_manifest(bibcode), scix_manifest)
+
+        self.app.config['PROXY_SERVER'] = 'https://ui.adsabs.harvard.edu:443'
+        self.app.config['PROXY_PREFIX'] = '/v1/scan'
+        self.assertEqual(cache_mod.cache_get_manifest(bibcode), ads_manifest)
+
+    @patch('scan_explorer_service.utils.cache.redis.from_url')
+    def test_variants_do_not_share_cached_searches(self, mock_from_url):
+        store = {}
+        client = MagicMock()
+        client.ping.return_value = True
+        client.setex.side_effect = lambda k, ttl, v: store.__setitem__(k, v)
+        client.get.side_effect = store.get
+        mock_from_url.return_value = client
+
+        cache_key = 'ocr:1993ASPC...52..132K:gas'
+        ads_annotations = '{"resources":[{"on":"https://ui.adsabs.harvard.edu:443/v1/scan/canvas/x"}]}'
+
+        cache_mod.cache_set_search(cache_key, ads_annotations)
+        self.assertEqual(cache_mod.cache_get_search(cache_key), ads_annotations)
+
+        self.app.config['PROXY_SERVER'] = 'https://scixplorer.org:443'
+        self.app.config['PROXY_PREFIX'] = '/v1/scix-scan'
+
+        self.assertIsNone(
+            cache_mod.cache_get_search(cache_key),
+            'the SciX deployment must not read content-search annotations cached by ADS')
+
+    @patch('scan_explorer_service.utils.cache.redis.from_url')
+    def test_delete_removes_the_id_from_every_recorded_scope(self, mock_from_url):
+        store = {}
+        scopes = set()
+        client = MagicMock()
+        client.ping.return_value = True
+        client.setex.side_effect = lambda k, ttl, v: store.__setitem__(k, v)
+        client.get.side_effect = store.get
+        client.sadd.side_effect = lambda k, v: scopes.add(v)
+        client.smembers.side_effect = lambda k: set(scopes)
+        client.delete.side_effect = lambda k: store.pop(k, None)
+        mock_from_url.return_value = client
+
+        collection_id = 'ApJ0099'
+        cache_mod.cache_set_manifest(collection_id, '{"ads":1}')
+
+        self.app.config['PROXY_SERVER'] = 'https://scixplorer.org:443'
+        self.app.config['PROXY_PREFIX'] = '/v1/scix-scan'
+        cache_mod.cache_set_manifest(collection_id, '{"scix":1}')
+
+        self.assertEqual(len(store), 2)
+        cache_mod.cache_delete_manifest(collection_id)
+        self.assertEqual(store, {}, 'the collection PUT must clear both deployment scopes')
+
+    @patch('scan_explorer_service.utils.cache.redis.from_url')
+    def test_delete_leaves_other_ids_alone(self, mock_from_url):
+        store = {}
+        scopes = set()
+        client = MagicMock()
+        client.ping.return_value = True
+        client.setex.side_effect = lambda k, ttl, v: store.__setitem__(k, v)
+        client.sadd.side_effect = lambda k, v: scopes.add(v)
+        client.smembers.side_effect = lambda k: set(scopes)
+        client.delete.side_effect = lambda k: store.pop(k, None)
+        mock_from_url.return_value = client
+
+        cache_mod.cache_set_manifest('ApJ0099', '{"a":1}')
+        cache_mod.cache_set_manifest('ApJ00990', '{"b":1}')
+        cache_mod.cache_set_manifest('*', '{"c":1}')
+
+        cache_mod.cache_delete_manifest('ApJ0099')
+
+        remaining = sorted(k.rsplit(':', 1)[-1] for k in store)
+        self.assertEqual(remaining, ['*', 'ApJ00990'])
+
 if __name__ == '__main__':
     unittest.main()

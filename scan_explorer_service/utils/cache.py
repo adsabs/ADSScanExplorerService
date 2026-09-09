@@ -3,6 +3,7 @@ import logging
 import threading
 import json as json_lib
 from flask import current_app
+from scan_explorer_service.utils.utils import proxy_url
 
 logger = logging.getLogger(__name__)
 
@@ -10,6 +11,7 @@ MANIFEST_CACHE_TTL = 86400
 MANIFEST_CACHE_PREFIX = 'scan:manifest:'
 SEARCH_CACHE_TTL = 60
 SEARCH_CACHE_PREFIX = 'scan:search:'
+MANIFEST_SCOPE_SET = 'scan:manifest:scopes'
 
 _redis_client = None
 _redis_lock = threading.Lock()
@@ -40,13 +42,23 @@ def _reset_redis():
     _redis_client = None
 
 
+def _variant_scope():
+    """Return the deployment scope for cache keys.
+
+    Cached documents embed absolute URLs built from PROXY_SERVER and PROXY_PREFIX,
+    so two deployments serving different hostnames must not share cache entries.
+    """
+    server, prefix = proxy_url()
+    return f'{server}/{prefix}:'
+
+
 def _redis_get(prefix, key):
-    """Fetch a cached value by prefix + key, returning None on miss or failure."""
+    """Fetch a cached value by prefix + scope + key, returning None on miss or failure."""
     r = _get_redis()
     if r is None:
         return None
     try:
-        return r.get(prefix + key)
+        return r.get(prefix + _variant_scope() + key)
     except redis.ConnectionError:
         _reset_redis()
         return None
@@ -54,30 +66,20 @@ def _redis_get(prefix, key):
         return None
 
 
-def _redis_set(prefix, key, value, ttl):
-    """Store a value in Redis with the given prefix, key, and TTL."""
+def _redis_set(prefix, key, value, ttl, scope_set=None):
+    """Store a value under prefix + scope + key, recording the scope when scope_set is given."""
     r = _get_redis()
     if r is None:
         return
     try:
-        r.setex(prefix + key, ttl, value)
+        scope = _variant_scope()
+        r.setex(prefix + scope + key, ttl, value)
+        if scope_set:
+            r.sadd(scope_set, scope)
     except redis.ConnectionError:
         _reset_redis()
     except Exception:
         logger.debug("Failed to write cache for key %s%s", prefix, key, exc_info=True)
-
-
-def _redis_delete(prefix, key):
-    """Delete a cached entry by prefix + key."""
-    r = _get_redis()
-    if r is None:
-        return
-    try:
-        r.delete(prefix + key)
-    except redis.ConnectionError:
-        _reset_redis()
-    except Exception:
-        logger.debug("Failed to delete cache for key %s%s", prefix, key, exc_info=True)
 
 
 def cache_get_manifest(key):
@@ -86,13 +88,30 @@ def cache_get_manifest(key):
 
 
 def cache_set_manifest(key, json_str):
-    """Cache a manifest JSON string with 1-hour TTL."""
-    _redis_set(MANIFEST_CACHE_PREFIX, key, json_str, MANIFEST_CACHE_TTL)
+    """Cache a manifest JSON string with 24-hour TTL."""
+    _redis_set(MANIFEST_CACHE_PREFIX, key, json_str, MANIFEST_CACHE_TTL, MANIFEST_SCOPE_SET)
 
 
 def cache_delete_manifest(key):
-    """Invalidate a cached manifest. Called when a collection is updated via PUT."""
-    _redis_delete(MANIFEST_CACHE_PREFIX, key)
+    """Invalidate one manifest id in every deployment scope that has cached it.
+
+    A collection PUT reaches only one deployment, but the update applies to all of
+    them, so this id is removed under each scope recorded in MANIFEST_SCOPE_SET.
+    Manifests of the articles inside the collection are not touched; they expire
+    on their own TTL.
+    """
+    r = _get_redis()
+    if r is None:
+        return
+    try:
+        scopes = set(r.smembers(MANIFEST_SCOPE_SET) or ())
+        scopes.add(_variant_scope())
+        for scope in scopes:
+            r.delete(MANIFEST_CACHE_PREFIX + scope + key)
+    except redis.ConnectionError:
+        _reset_redis()
+    except Exception:
+        logger.warning("Failed to delete cached manifest for key %s", key, exc_info=True)
 
 
 def cache_get_search(key):
