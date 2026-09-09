@@ -68,7 +68,7 @@ class ManifestFactoryExtended(ManifestFactory):
 
         if len(page.articles) > 0:
             metadata = {
-                'Abstract': ''.join(f'<a href="https://ui.adsabs.harvard.edu/abs/{str(x.bibcode)}/abstract">{str(x.bibcode)}</a><br/>' for x in page.articles)
+                'Abstract': ''.join(f'<a href="https://ui.adsabs.harvard.edu/abs/{str(x.bibcode)}/abstract">{str(x.bibcode)}</a><br/>' for article in page.articles)
             }
             canvas.set_metadata(metadata)
 
