@@ -62,6 +62,40 @@ class TestManifest(TestCaseDatabase):
         self.assertStatus(r, 200)
         self.assertEqual(data['@type'], 'sc:Canvas')
 
+    def test_canvas_abstract_link_stays_on_the_readers_host(self):
+        """A hardcoded host would send SciX readers to ADS from the 'About this item' panel."""
+        bibcode = self.article.bibcode
+        url = url_for("manifest.get_manifest", id=self.article.id)
+        r = self.client.get(url)
+        self.assertStatus(r, 200)
+        canvases = json.loads(r.data)['sequences'][0]['canvases']
+        values = [m['value'] for c in canvases for m in c.get('metadata', [])]
+        self.assertTrue(values, 'expected canvas metadata to be present')
+        for value in values:
+            self.assertNotIn('http://', value)
+            self.assertNotIn('https://', value)
+            self.assertIn(f'href="/abs/{bibcode}/abstract"', value)
+
+    def test_a_bibcode_cannot_inject_markup_into_canvas_metadata(self):
+        """The manifest is a public document; a malicious bibcode must not become live markup."""
+        hostile = '"><img src=x onerror=alert(1)>'
+        article = Article(bibcode=hostile, collection_id=self.collection.id)
+        self.app.db.session.add(article)
+        self.app.db.session.commit()
+        self.page.articles.append(article)
+        self.app.db.session.commit()
+
+        r = self.client.get(url_for("manifest.get_manifest", id=self.collection.id))
+        self.assertStatus(r, 200)
+        values = [m['value'] for c in json.loads(r.data)['sequences'][0]['canvases']
+                  for m in c.get('metadata', [])]
+        self.assertTrue(values)
+        for value in values:
+            self.assertNotIn(hostile, value, 'the bibcode must not appear unescaped')
+            self.assertNotIn('<img', value)
+            self.assertNotIn('"><', value)
+        self.assertTrue(any('&lt;img' in v for v in values), 'the markup must survive as escaped text')
+
     @patch('opensearchpy.OpenSearch')
     def test_search_article_with_highlight(self, OpenSearch):
         open_search_highlight_response = {"hits":{"total":{"value":1,"relation":"eq"},"max_score":None,"hits":[{'_source':{'page_id':self.page.id, 'volume_id':self.page.collection_id, 'page_label':self.page.label, 'page_number': self.page.volume_running_page_num}, "highlight":{'text':'some <b>highlighted</b> text'}}]}}
