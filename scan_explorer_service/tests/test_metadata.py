@@ -143,6 +143,78 @@ class TestMetadata(TestCaseDatabase):
         r = self.client.get(url)
         self.assertStatus(r, 400)
 
+    def test_bad_pagination_is_a_client_error(self):
+        """Invalid page or limit is the caller's mistake, so it must not read as an outage."""
+        for endpoint in ("metadata.article_search", "metadata.collection_search", "metadata.page_search"):
+            for params in ({"limit": -1}, {"limit": 0}, {"page": 0}, {"page": -3}):
+                url = url_for(endpoint, q='volume:1', **params)
+                r = self.client.get(url)
+                self.assertStatus(r, 400, f"{endpoint} with {params}")
+                self.assertIn('application/json', r.content_type)
+
+    @patch('opensearchpy.OpenSearch')
+    def test_deep_pagination_is_rejected_before_opensearch_is_called(self, OpenSearch):
+        """Paging past the result window is the caller's mistake, not a backend outage."""
+        window = self.app.config.get('OPEN_SEARCH_MAX_RESULT_WINDOW', 10000)
+        limit = 5
+        url = url_for("metadata.page_search", q='volume:1', page=window // limit + 1, limit=limit)
+        r = self.client.get(url)
+        self.assertStatus(r, 400)
+        self.assertIn('searchable window', json.loads(r.data)['message'])
+        OpenSearch.return_value.search.assert_not_called()
+
+    @patch('opensearchpy.OpenSearch')
+    def test_the_last_advertised_page_is_reachable(self, OpenSearch):
+        """pageCount must never name a page the result-window guard would reject."""
+        window = self.app.config.get('OPEN_SEARCH_MAX_RESULT_WINDOW', 10000)
+        limit = 3
+        OpenSearch.return_value.search.return_value = {
+            "hits": {"total": {"value": 50000, "relation": "eq"}, "max_score": None, "hits": []},
+            "aggregations": {"total_count": {"value": 50000}, "ids": {"buckets": []}}}
+
+        r = self.client.get(url_for("metadata.page_search", q='volume:1', page=1, limit=limit))
+        self.assertStatus(r, 200)
+        advertised = json.loads(r.data)['pageCount']
+        self.assertLessEqual(advertised * limit, window,
+                             'the advertised final page must sit inside the window')
+
+    @patch('opensearchpy.OpenSearch')
+    def test_the_page_exactly_on_the_window_boundary_is_allowed(self, OpenSearch):
+        window = self.app.config.get('OPEN_SEARCH_MAX_RESULT_WINDOW', 10000)
+        limit = 5
+        OpenSearch.return_value.search.return_value = {
+            "hits": {"total": {"value": 50000, "relation": "eq"}, "max_score": None, "hits": []}}
+
+        url = url_for("metadata.page_search", q='volume:1', page=window // limit, limit=limit)
+        self.assertStatus(self.client.get(url), 200)
+
+    @patch('opensearchpy.OpenSearch')
+    def test_non_numeric_pagination_falls_back_to_the_default(self, OpenSearch):
+        """Deliberate: a page or limit that is not a number is served as the default, not rejected."""
+        OpenSearch.return_value.search.return_value = {
+            "hits": {"total": {"value": 0, "relation": "eq"}, "max_score": None, "hits": []},
+            "aggregations": {"total_count": {"value": 0}, "ids": {"buckets": []}}}
+
+        for params in ({"page": "abc"}, {"limit": "abc"}, {"page": "1.5"}):
+            r = self.client.get(url_for("metadata.article_search", q='volume:1', **params))
+            self.assertStatus(r, 200, str(params))
+
+    def test_a_limit_beyond_the_result_window_is_a_client_error(self):
+        """Without this bound, article_search returns 400 or 200 for one request depending on data."""
+        window = self.app.config.get('OPEN_SEARCH_MAX_RESULT_WINDOW', 10000)
+        r = self.client.get(url_for("metadata.article_search", q='volume:1', limit=window + 1))
+        self.assertStatus(r, 400)
+
+    @patch('opensearchpy.OpenSearch')
+    def test_deep_article_pages_are_not_capped_when_nothing_matches(self, OpenSearch):
+        """article_search probes the page index for a count; that probe must not cap the caller."""
+        OpenSearch.return_value.search.return_value = {
+            "hits": {"total": {"value": 0, "relation": "eq"}, "max_score": None, "hits": []},
+            "aggregations": {"total_count": {"value": 0}, "ids": {"buckets": []}}}
+
+        url = url_for("metadata.article_search", q='volume:1', page=2001, limit=5)
+        self.assertStatus(self.client.get(url), 200)
+
     @patch('opensearchpy.OpenSearch')
     def test_query_parsing_sucess(self, OpenSearch):
         es = OpenSearch.return_value

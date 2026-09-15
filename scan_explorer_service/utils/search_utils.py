@@ -1,4 +1,5 @@
 import math
+from flask import current_app
 from scan_explorer_service.models import PageType, PageColor
 import shlex
 import enum
@@ -65,6 +66,13 @@ def parse_query_args(args):
 
     page = args.get('page', 1, int)
     limit = args.get('limit', 10, int)
+    window = current_app.config.get('OPEN_SEARCH_MAX_RESULT_WINDOW', 10000)
+    if page < 1:
+        raise ValueError('page must be 1 or greater')
+    if limit < 1:
+        raise ValueError('limit must be 1 or greater')
+    if limit > window:
+        raise ValueError(f'limit must be {window} or less')
     sort_raw = args.get('sort')
     sort = parse_sorting_option(sort_raw)
     return qs, qs_dict, page, limit, sort
@@ -134,7 +142,7 @@ def check_page_type(qs_dict: dict):
             if page_type.replace('"','').lower() == p.name.lower():
                 qs_dict[SearchOptions.PageType.value] = p.name
                 return
-        raise Exception("%s is not a valid page type, %s is possible choices"% (page_type, str(valid_types)))
+        raise ValueError("%s is not a valid page type, %s is possible choices"% (page_type, str(valid_types)))
 
 def check_page_color(qs_dict: dict):
     """Validate and normalize the pagecolor filter value to match the PageColor enum."""
@@ -149,7 +157,7 @@ def check_page_color(qs_dict: dict):
             if page_color.replace('"','').lower() == p.name.lower():
                 qs_dict[SearchOptions.PageColor.value] = p.name
                 return
-        raise Exception("%s is not a valid page color, %s is possible choices"% (page_color, str(valid_types)))
+        raise ValueError("%s is not a valid page color, %s is possible choices"% (page_color, str(valid_types)))
 
 def check_project(qs_dict: dict):
     """Validate and normalize the project filter value against known project names."""
@@ -165,7 +173,7 @@ def check_project(qs_dict: dict):
             if project.lower() == p.lower():
                 qs_dict[SearchOptions.Project.value] = p.replace('Microfilm Scanning', 'Historical Literature')
                 return
-        raise Exception("%s is not a valid project, %s is possible choices"% (project, str(valid_types)))
+        raise ValueError("%s is not a valid project, %s is possible choices"% (project, str(valid_types)))
 
 def serialize_os_agg_page_bucket(bucket: dict):
     """Convert an OpenSearch page hit into a page result dict with collection and label info."""
@@ -180,7 +188,8 @@ def serialize_os_agg_page_bucket(bucket: dict):
 def serialize_os_page_result(result: dict, page: int, limit: int, contentQuery):
     """Serialize an OpenSearch page search response into a paginated result dict."""
     total_count = result['hits']['total']['value']
-    page_count = int(math.ceil(min(total_count,10000) / limit))    
+    window = current_app.config.get('OPEN_SEARCH_MAX_RESULT_WINDOW', 10000)
+    page_count = min(int(math.ceil(total_count / limit)), window // limit)
     es_buckets = result['hits']['hits']
 
     return {'page': page, 'pageCount': page_count, 'limit': limit, 'total': total_count, 'query': contentQuery,
@@ -190,7 +199,7 @@ def serialize_os_page_ocr_result(result: dict):
     """Extract the OCR text from an OpenSearch page result, raising if no page is found."""
     es_buckets = result['hits']['hits']
     if len(es_buckets) < 1:
-        raise Exception("No page with those parameters found")
+        raise ValueError("No page with those parameters found")
     return es_buckets[0]['_source']['text']
 
 def serialize_os_agg_collection_bucket(bucket: dict):

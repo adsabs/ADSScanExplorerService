@@ -194,7 +194,7 @@ def article_search():
         collection_count = page_count = 0
         if article_count == 0:
             collection_count = aggregate_search(qs, EsFields.volume_id, page, limit, sort)['aggregations']['total_count']['value']
-            page_count = page_os_search(qs, page, limit, sort)['hits']['total']['value']
+            page_count = page_os_search(qs, 1, limit, sort)['hits']['total']['value']
         agg_limit = current_app.config.get("OPEN_SEARCH_AGG_BUCKET_LIMIT", 10000)
         response_data = serialize_os_article_result(result, page, limit, text_query, collection_count, page_count, agg_limit)
         cache_set_search(cache_key, json_lib.dumps(response_data))
