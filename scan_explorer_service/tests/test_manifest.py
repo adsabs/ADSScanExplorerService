@@ -5,6 +5,7 @@ from scan_explorer_service.models import Collection, Page, Article
 from scan_explorer_service.tests.base import TestCaseDatabase
 from scan_explorer_service.models import Base
 import json
+import opensearchpy
 
 class TestManifest(TestCaseDatabase):
 
@@ -111,6 +112,67 @@ class TestManifest(TestCaseDatabase):
         self.assertStatus(r, 200)
         self.assertEqual(data['@type'], 'sc:AnnotationList')
         self.assertEqual(data.get('resources', []), [])
+
+    @patch('opensearchpy.OpenSearch')
+    def test_search_reports_an_internal_failure_as_json_500(self, OpenSearch):
+        """Our own failure is a 500, in JSON, and must not leak the exception text."""
+        OpenSearch.return_value.search.side_effect = RuntimeError('could not connect to db.internal')
+
+        url = url_for("manifest.search", id=self.article.id, q='gas')
+        r = self.client.get(url)
+        self.assertStatus(r, 500)
+        self.assertIn('application/json', r.content_type)
+        self.assertNotIn('db.internal', r.data.decode())
+
+    @patch('opensearchpy.OpenSearch')
+    def test_search_reports_a_search_outage_as_503(self, OpenSearch):
+        """A backend outage must be a 5xx so it is visible to alerting."""
+        OpenSearch.return_value.search.side_effect = opensearchpy.exceptions.ConnectionError(
+            'N/A', 'connection refused', Exception('refused'))
+
+        url = url_for("manifest.search", id=self.article.id, q='gas')
+        r = self.client.get(url)
+        self.assertStatus(r, 503)
+        self.assertIn('unavailable', json.loads(r.data)['message'].lower())
+
+    @patch('opensearchpy.OpenSearch')
+    def test_search_reports_a_rejected_query_as_400(self, OpenSearch):
+        """OpenSearch rejecting the query is the caller's problem, not an outage."""
+        OpenSearch.return_value.search.side_effect = opensearchpy.exceptions.RequestError(
+            400, 'search_phase_execution_exception', {'error': 'bad query'})
+
+        url = url_for("manifest.search", id=self.article.id, q='gas')
+        r = self.client.get(url)
+        self.assertStatus(r, 400)
+
+
+class TestCollectionManifest(TestCaseDatabase):
+
+    @patch('opensearchpy.OpenSearch')
+    def test_a_missing_index_is_our_fault_not_an_outage(self, OpenSearch):
+        """A renamed index must not read as 'OpenSearch is down' forever."""
+        OpenSearch.return_value.search.side_effect = opensearchpy.exceptions.NotFoundError(
+            404, 'index_not_found_exception', {'error': 'no such index'})
+
+        r = self.client.get(url_for("manifest.search", id=self.article.id, q='gas'))
+        self.assertStatus(r, 500)
+        self.assertNotIn('no such index', r.data.decode())
+
+    @patch('opensearchpy.OpenSearch')
+    def test_a_bad_credential_is_our_fault_not_an_outage(self, OpenSearch):
+        OpenSearch.return_value.search.side_effect = opensearchpy.exceptions.AuthenticationException(
+            401, 'security_exception', {'error': 'bad credentials'})
+
+        r = self.client.get(url_for("manifest.search", id=self.article.id, q='gas'))
+        self.assertStatus(r, 500)
+
+    @patch('opensearchpy.OpenSearch')
+    def test_an_opensearch_server_error_is_an_outage(self, OpenSearch):
+        OpenSearch.return_value.search.side_effect = opensearchpy.exceptions.TransportError(
+            503, 'search_phase_execution_exception', {'error': 'overloaded'})
+
+        r = self.client.get(url_for("manifest.search", id=self.article.id, q='gas'))
+        self.assertStatus(r, 503)
 
     @patch('opensearchpy.OpenSearch')
     def test_search_article_with_highlight(self, OpenSearch):

@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy import or_
 from flask_discoverer import advertise
 from scan_explorer_service.utils.search_utils import *
-from scan_explorer_service.views.view_utils import ApiErrors
+from scan_explorer_service.views.view_utils import ApiErrors, search_error_response
 from scan_explorer_service.utils.cache import cache_delete_manifests, cache_get_search, cache_set_search
 from scan_explorer_service.open_search import EsFields, page_os_search, aggregate_search, page_ocr_os_search
 import opensearchpy
@@ -216,12 +216,8 @@ def article_search():
         response_data = serialize_os_article_result(result, page, limit, text_query, collection_count, page_count, agg_limit)
         cache_set_search(cache_key, json_lib.dumps(response_data))
         return jsonify(response_data)
-    except (opensearchpy.exceptions.ConnectionError, opensearchpy.exceptions.ConnectionTimeout, opensearchpy.exceptions.TransportError) as e:
-        current_app.logger.exception(f"OpenSearch error: {e}")
-        return jsonify(message='Search service temporarily unavailable', type=ApiErrors.SearchError.value), 503
     except Exception as e:
-        current_app.logger.exception(f"An exception has occurred: {e}")
-        return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
+        return search_error_response(e)
 
 
 @advertise(scopes=['api'], rate_limit=[5000, 3600*24])
@@ -243,11 +239,8 @@ def collection_search():
         response_data = serialize_os_collection_result(result, page, limit, text_query, agg_limit)
         cache_set_search(cache_key, json_lib.dumps(response_data))
         return jsonify(response_data)
-    except (opensearchpy.exceptions.ConnectionError, opensearchpy.exceptions.ConnectionTimeout, opensearchpy.exceptions.TransportError) as e:
-        current_app.logger.exception(f"OpenSearch error: {e}")
-        return jsonify(message='Search service temporarily unavailable', type=ApiErrors.SearchError.value), 503
     except Exception as e:
-        return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
+        return search_error_response(e)
 
 @advertise(scopes=['api'], rate_limit=[5000, 3600*24])
 @bp_metadata.route('/page/search', methods=['GET'])
@@ -267,11 +260,8 @@ def page_search():
         response_data = serialize_os_page_result(result, page, limit, text_query)
         cache_set_search(cache_key, json_lib.dumps(response_data))
         return jsonify(response_data)
-    except (opensearchpy.exceptions.ConnectionError, opensearchpy.exceptions.ConnectionTimeout, opensearchpy.exceptions.TransportError) as e:
-        current_app.logger.exception(f"OpenSearch error: {e}")
-        return jsonify(message='Search service temporarily unavailable', type=ApiErrors.SearchError.value), 503
     except Exception as e:
-        return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
+        return search_error_response(e)
 
 @advertise(scopes=['api'], rate_limit=[5000, 3600*24])
 @bp_metadata.route('/page/ocr', methods=['GET'])
@@ -307,8 +297,5 @@ def get_page_ocr():
             cache_set_search(cache_key, ocr_text)
             return current_app.response_class(ocr_text, content_type='text/plain')
 
-    except (opensearchpy.exceptions.ConnectionError, opensearchpy.exceptions.ConnectionTimeout, opensearchpy.exceptions.TransportError) as e:
-        current_app.logger.exception(f"OpenSearch error: {e}")
-        return jsonify(message='Search service temporarily unavailable', type=ApiErrors.SearchError.value), 503
     except Exception as e:
-        return jsonify(message=str(e), type=ApiErrors.SearchError.value), 400
+        return search_error_response(e)

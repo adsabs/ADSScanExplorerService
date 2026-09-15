@@ -5,6 +5,7 @@ from scan_explorer_service.models import Collection, Page, Article
 from scan_explorer_service.tests.base import TestCaseDatabase
 from scan_explorer_service.models import Base
 import json
+import opensearchpy
 
 class TestMetadata(TestCaseDatabase):
 
@@ -214,6 +215,52 @@ class TestMetadata(TestCaseDatabase):
 
         url = url_for("metadata.article_search", q='volume:1', page=2001, limit=5)
         self.assertStatus(self.client.get(url), 200)
+
+    SEARCH_ENDPOINTS = ("metadata.article_search", "metadata.collection_search", "metadata.page_search")
+
+    @patch('opensearchpy.OpenSearch')
+    def test_search_outage_is_reported_as_503(self, OpenSearch):
+        """Every search endpoint must report an unreachable backend as an outage."""
+        OpenSearch.return_value.search.side_effect = opensearchpy.exceptions.ConnectionError(
+            'N/A', 'connection refused', Exception('refused'))
+        for endpoint in self.SEARCH_ENDPOINTS:
+            r = self.client.get(url_for(endpoint, q='volume:1'))
+            self.assertStatus(r, 503, endpoint)
+            self.assertIn('unavailable', json.loads(r.data)['message'].lower())
+
+    @patch('opensearchpy.OpenSearch')
+    def test_search_misconfiguration_is_ours_not_an_outage(self, OpenSearch):
+        """A missing index is a 500, so alerting sees it and nobody reads it as 'OpenSearch is down'."""
+        OpenSearch.return_value.search.side_effect = opensearchpy.exceptions.NotFoundError(
+            404, 'index_not_found_exception', {'error': 'no such index'})
+        for endpoint in self.SEARCH_ENDPOINTS:
+            r = self.client.get(url_for(endpoint, q='volume:1'))
+            self.assertStatus(r, 500, endpoint)
+            self.assertNotIn('no such index', r.data.decode())
+
+    @patch('opensearchpy.OpenSearch')
+    def test_search_internal_failure_does_not_leak_its_text(self, OpenSearch):
+        OpenSearch.return_value.search.side_effect = RuntimeError('could not connect to db.internal')
+        for endpoint in self.SEARCH_ENDPOINTS:
+            r = self.client.get(url_for(endpoint, q='volume:1'))
+            self.assertStatus(r, 500, endpoint)
+            self.assertIn('application/json', r.content_type)
+            self.assertNotIn('db.internal', r.data.decode())
+
+    @patch('opensearchpy.OpenSearch')
+    def test_search_rejected_query_is_a_client_error(self, OpenSearch):
+        OpenSearch.return_value.search.side_effect = opensearchpy.exceptions.RequestError(
+            400, 'search_phase_execution_exception', {'error': 'bad query'})
+        for endpoint in self.SEARCH_ENDPOINTS:
+            r = self.client.get(url_for(endpoint, q='volume:1'))
+            self.assertStatus(r, 400, endpoint)
+
+    @patch('opensearchpy.OpenSearch')
+    def test_ocr_failure_follows_the_same_contract(self, OpenSearch):
+        OpenSearch.return_value.search.side_effect = RuntimeError('could not connect to db.internal')
+        r = self.client.get(url_for("metadata.get_page_ocr", id=self.article.id, page_number=1))
+        self.assertStatus(r, 500)
+        self.assertNotIn('db.internal', r.data.decode())
 
     @patch('opensearchpy.OpenSearch')
     def test_query_parsing_sucess(self, OpenSearch):
