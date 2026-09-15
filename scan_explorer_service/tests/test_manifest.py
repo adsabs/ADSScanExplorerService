@@ -97,6 +97,22 @@ class TestManifest(TestCaseDatabase):
         self.assertTrue(any('&lt;img' in v for v in values), 'the markup must survive as escaped text')
 
     @patch('opensearchpy.OpenSearch')
+    def test_search_skips_hits_that_have_no_highlight(self, OpenSearch):
+        """A stop word is analyzed away, so every page matches with no highlight to show."""
+        hits = [{'_source': {'page_id': self.page.id, 'volume_id': self.page.collection_id,
+                             'page_label': self.page.label,
+                             'page_number': self.page.volume_running_page_num}}]
+        OpenSearch.return_value.search.return_value = {
+            "hits": {"total": {"value": 1, "relation": "eq"}, "max_score": None, "hits": hits}}
+
+        url = url_for("manifest.search", id=self.article.id, q='the')
+        r = self.client.get(url)
+        data = json.loads(r.data)
+        self.assertStatus(r, 200)
+        self.assertEqual(data['@type'], 'sc:AnnotationList')
+        self.assertEqual(data.get('resources', []), [])
+
+    @patch('opensearchpy.OpenSearch')
     def test_search_article_with_highlight(self, OpenSearch):
         open_search_highlight_response = {"hits":{"total":{"value":1,"relation":"eq"},"max_score":None,"hits":[{'_source':{'page_id':self.page.id, 'volume_id':self.page.collection_id, 'page_label':self.page.label, 'page_number': self.page.volume_running_page_num}, "highlight":{'text':'some <b>highlighted</b> text'}}]}}
         article_id = self.article.id

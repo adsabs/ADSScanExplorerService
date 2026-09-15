@@ -116,10 +116,12 @@ def search(id: str):
             results = text_search_highlight(query, es_field, item.id)
 
             for res in results:
+                highlight_text = "<br><br>".join(res['highlight']).replace("em>", "b>")
+                if not highlight_text:
+                    continue
                 annotation = annotation_list.annotation(res['page_id'])
                 canvas_slice_url = url_for_proxy('manifest.get_canvas', page_id=res['page_id'])
                 annotation.on = canvas_slice_url
-                highlight_text = "<br><br>".join(res['highlight']).replace("em>", "b>")
                 annotation.text(highlight_text, format="text/html")
 
             return to_json_and_cache(annotation_list, cache_set_search, cache_key)
