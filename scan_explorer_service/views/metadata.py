@@ -4,10 +4,11 @@ from flask import Blueprint, current_app, jsonify, request
 from scan_explorer_service.utils.db_utils import article_get_or_create, article_overwrite, collection_overwrite, page_get_or_create, page_overwrite
 from scan_explorer_service.models import Article, Collection, Page, page_article_association_table
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import or_
 from flask_discoverer import advertise
 from scan_explorer_service.utils.search_utils import *
 from scan_explorer_service.views.view_utils import ApiErrors
-from scan_explorer_service.utils.cache import cache_delete_manifest, cache_get_search, cache_set_search
+from scan_explorer_service.utils.cache import cache_delete_manifests, cache_get_search, cache_set_search
 from scan_explorer_service.open_search import EsFields, page_os_search, aggregate_search, page_ocr_os_search
 import opensearchpy
 import requests
@@ -81,6 +82,14 @@ def put_collection():
         with current_app.session_scope() as session:
             try:
                 collection = Collection(**json)
+                stale_article_ids = {
+                    row[0] for row in session.query(Article.id).filter(
+                        or_(
+                            Article.collection_id == collection.id,
+                            Article.pages.any(Page.collection_id == collection.id),
+                        )
+                    ).all()
+                }
                 collection_overwrite(session, collection)
 
                 now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -132,7 +141,8 @@ def put_collection():
                         pg_insert(page_article_association_table).values(page_article_data).on_conflict_do_nothing()
                     )
                 session.commit()
-                cache_delete_manifest(collection.id)
+                stale_article_ids.update(articles_data.keys())
+                cache_delete_manifests([collection.id, *stale_article_ids])
 
                 return jsonify({'id': collection.id}), 200
             except Exception:

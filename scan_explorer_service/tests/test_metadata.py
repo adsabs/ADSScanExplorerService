@@ -306,6 +306,34 @@ class TestMetadata(TestCaseDatabase):
         pages = self.app.db.session.query(Page).filter(Page.collection_id == collection_id).all()
         self.assertEqual(len(pages), 1)
 
+    @patch('scan_explorer_service.views.metadata.cache_delete_manifests')
+    def test_put_collection_invalidates_its_articles(self, mock_delete):
+        """The collection's pages changed, so every article manifest in it is now stale."""
+        collection_json = {
+            'type': 'type',
+            'journal': self.collection.journal,
+            'volume': self.collection.volume,
+            'pages': [{
+                'name': 'pageA',
+                'color_type': 'BW',
+                'page_type': 'Normal',
+                'label': '1',
+                'width': 100,
+                'height': 100,
+                'volume_running_page_num': 1,
+                'articles': [{'bibcode': '2000ApJ...001..001A'}],
+            }]
+        }
+        url = url_for("metadata.put_collection")
+        self.assertStatus(self.client.put(url, json=collection_json), 200)
+
+        mock_delete.assert_called_once()
+        invalidated = set(mock_delete.call_args[0][0])
+        self.assertIn(self.collection.id, invalidated)
+        self.assertIn('2000ApJ...001..001A', invalidated)
+        self.assertIn(self.article.id, invalidated)
+        self.assertIn(self.article2.id, invalidated)
+
     def test_put_collection_deduplicates_articles(self):
         """An article appearing in multiple pages is inserted only once."""
         collection_json = {

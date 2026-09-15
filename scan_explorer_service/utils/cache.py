@@ -12,6 +12,7 @@ MANIFEST_CACHE_PREFIX = 'scan:manifest:'
 SEARCH_CACHE_TTL = 60
 SEARCH_CACHE_PREFIX = 'scan:search:'
 MANIFEST_SCOPE_SET = 'scan:manifest:scopes'
+DELETE_BATCH_SIZE = 500
 
 _redis_client = None
 _redis_lock = threading.Lock()
@@ -93,13 +94,19 @@ def cache_set_manifest(key, json_str):
 
 
 def cache_delete_manifest(key):
-    """Invalidate one manifest id in every deployment scope that has cached it.
+    """Invalidate one manifest id in every deployment scope that has cached it."""
+    cache_delete_manifests([key])
+
+
+def cache_delete_manifests(keys):
+    """Invalidate several manifest ids in every deployment scope that has cached them.
 
     A collection PUT reaches only one deployment, but the update applies to all of
-    them, so this id is removed under each scope recorded in MANIFEST_SCOPE_SET.
-    Manifests of the articles inside the collection are not touched; they expire
-    on their own TTL.
+    them, so each id is removed under every scope recorded in MANIFEST_SCOPE_SET.
     """
+    keys = list(dict.fromkeys(keys))
+    if not keys:
+        return
     r = _get_redis()
     if r is None:
         return
@@ -107,11 +114,13 @@ def cache_delete_manifest(key):
         scopes = set(r.smembers(MANIFEST_SCOPE_SET))
         scopes.add(_variant_scope())
         for scope in scopes:
-            r.delete(MANIFEST_CACHE_PREFIX + scope + key)
-    except redis.ConnectionError:
+            names = [MANIFEST_CACHE_PREFIX + scope + key for key in keys]
+            for i in range(0, len(names), DELETE_BATCH_SIZE):
+                r.delete(*names[i:i + DELETE_BATCH_SIZE])
+    except (redis.ConnectionError, redis.TimeoutError):
         _reset_redis()
     except Exception:
-        logger.warning("Failed to delete cached manifest for key %s", key, exc_info=True)
+        logger.warning("Failed to delete cached manifests for %s", keys, exc_info=True)
 
 
 def cache_get_search(key):

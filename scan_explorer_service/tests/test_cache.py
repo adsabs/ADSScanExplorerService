@@ -531,6 +531,71 @@ class TestVariantIsolation(TestCaseDatabase):
 
         remaining = sorted(k.rsplit(':', 1)[-1] for k in store)
         self.assertEqual(remaining, ['*', 'ApJ00990'])
+    def _fake_redis(self, mock_from_url):
+        store, scopes = {}, set()
+        client = MagicMock()
+        client.ping.return_value = True
+        client.setex.side_effect = lambda k, ttl, v: store.__setitem__(k, v)
+        client.get.side_effect = store.get
+        client.sadd.side_effect = lambda k, v: scopes.add(v)
+        client.smembers.side_effect = lambda k: set(scopes)
+        client.delete.side_effect = lambda *names: [store.pop(n, None) for n in names]
+
+        def _set(name, value, nx=False, ex=None):
+            if ex is None:
+                raise AssertionError('a claim without an expiry would outlive a crashed holder')
+            if nx and name in store:
+                return None
+            store[name] = value
+            return True
+        client.set.side_effect = _set
+        self.redis_client = client
+        mock_from_url.return_value = client
+        return store
+
+    @patch('scan_explorer_service.utils.cache.redis.from_url')
+    def test_bulk_delete_clears_every_id_in_every_scope(self, mock_from_url):
+        store = {}
+        scopes = set()
+        client = MagicMock()
+        client.ping.return_value = True
+        client.setex.side_effect = lambda k, ttl, v: store.__setitem__(k, v)
+        client.sadd.side_effect = lambda k, v: scopes.add(v)
+        client.smembers.side_effect = lambda k: set(scopes)
+        client.delete.side_effect = lambda *names: [store.pop(n, None) for n in names]
+        mock_from_url.return_value = client
+
+        ids = ['ApJ0099', '1988ApJ...333..341R', '1988ApJ...333..352S']
+        for i in ids:
+            cache_mod.cache_set_manifest(i, '{"ads":1}')
+        self.app.config['PROXY_SERVER'] = 'https://scixplorer.org:443'
+        self.app.config['PROXY_PREFIX'] = '/v1/scix-scan'
+        for i in ids:
+            cache_mod.cache_set_manifest(i, '{"scix":1}')
+        cache_mod.cache_set_manifest('untouched', '{"scix":1}')
+
+        self.assertEqual(len(store), 7)
+        cache_mod.cache_delete_manifests(ids)
+
+        remaining = sorted(k.rsplit(':', 1)[-1] for k in store)
+        self.assertEqual(remaining, ['untouched'])
+
+    @patch('scan_explorer_service.utils.cache.redis.from_url')
+    def test_bulk_delete_spans_more_than_one_batch(self, mock_from_url):
+        store = self._fake_redis(mock_from_url)
+        ids = ['id%04d' % i for i in range(cache_mod.DELETE_BATCH_SIZE + 25)]
+        for i in ids:
+            cache_mod.cache_set_manifest(i, '{}')
+        self.assertEqual(len(store), len(ids))
+
+        cache_mod.cache_delete_manifests(ids)
+        leftovers = [k for k in store if k.startswith(cache_mod.MANIFEST_CACHE_PREFIX)]
+        self.assertEqual(leftovers, [], 'every batch must be deleted, not just the first')
+        self.assertGreater(self.redis_client.delete.call_count, 1, 'expected more than one batch')
+
+if __name__ == '__main__':
+    unittest.main()
+
 
 if __name__ == '__main__':
     unittest.main()
