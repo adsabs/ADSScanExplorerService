@@ -334,6 +334,29 @@ class TestMetadata(TestCaseDatabase):
         self.assertIn(self.article.id, invalidated)
         self.assertIn(self.article2.id, invalidated)
 
+    @patch('scan_explorer_service.views.metadata.cache_delete_manifests')
+    def test_put_page_invalidates_its_articles_and_collection(self, mock_delete):
+        page_json = dict(self.page_json)
+        page_json['articles'] = [{'bibcode': self.article.bibcode}]
+        collection_id = self.collection.id
+        bibcode = self.article.bibcode
+
+        r = self.client.put(url_for("metadata.put_page"), json=page_json)
+        self.assertStatus(r, 200)
+        invalidated = set(mock_delete.call_args[0][0])
+        self.assertIn(collection_id, invalidated)
+        self.assertIn(bibcode, invalidated)
+
+    @patch('scan_explorer_service.views.metadata.cache_delete_manifests')
+    def test_put_article_invalidates_itself_and_its_collection(self, mock_delete):
+        collection_id = self.collection.id
+        r = self.client.put(url_for("metadata.put_article"),
+                            json={'bibcode': '2001ApJ...555..555Z', 'collection_id': collection_id})
+        self.assertStatus(r, 200)
+        invalidated = set(mock_delete.call_args[0][0])
+        self.assertIn('2001ApJ...555..555Z', invalidated)
+        self.assertIn(collection_id, invalidated)
+
     def test_put_collection_deduplicates_articles(self):
         """An article appearing in multiple pages is inserted only once."""
         collection_json = {

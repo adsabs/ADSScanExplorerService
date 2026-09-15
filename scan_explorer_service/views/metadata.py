@@ -65,6 +65,9 @@ def put_article():
             try:
                 article = Article(**json)
                 article_overwrite(session, article)
+                session.commit()
+                stale = [i for i in (article.id, article.collection_id) if i]
+                cache_delete_manifests(stale)
                 return jsonify({'id': article.bibcode}), 200
             except Exception:
                 session.rollback()
@@ -170,6 +173,10 @@ def put_page():
                 session.add(page)
                 session.commit()
                 session.refresh(page)
+                stale = [a.id for a in page.articles]
+                if page.collection_id:
+                    stale.append(page.collection_id)
+                cache_delete_manifests(stale)
                 return jsonify({'id': page.id}), 200
             except Exception:
                 session.rollback()
