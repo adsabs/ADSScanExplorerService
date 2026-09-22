@@ -138,6 +138,11 @@ def page_os_search(qs: str, page, limit, sort):
     query = create_query_string_query(qs)
     query = set_page_search_fields(query)
     from_number = (page - 1) * limit
+    window = current_app.config.get('OPEN_SEARCH_MAX_RESULT_WINDOW', 10000)
+    if from_number + limit > window:
+        raise ValueError(
+            f'page {page} at limit {limit} reaches result {from_number + limit}, '
+            f'beyond the searchable window of {window}')
     query['size'] = limit
     query['from'] = from_number
     query['track_total_hits'] = True

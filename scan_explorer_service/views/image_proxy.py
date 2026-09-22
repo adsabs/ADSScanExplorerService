@@ -81,9 +81,11 @@ def image_proxy_thumbnail():
             path = path.replace(remove, '')
 
             return image_proxy(path)
+    except ValueError as e:
+        return jsonify(Message=str(e)), 400
     except Exception as e:
         current_app.logger.exception(f'{e}')
-        return jsonify(Message=str(e)), 400
+        return jsonify(Message='Internal error'), 500
 
 def get_item(session, id):
     """Look up an Article or Collection by ID, raising if neither exists."""
@@ -91,7 +93,7 @@ def get_item(session, id):
                 session.query(Article).filter(Article.id == id).one_or_none()
                 or session.query(Collection).filter(Collection.id == id).one_or_none())
     if not item:
-        raise Exception("ID: " + str(id) + " not found")
+        raise ValueError("ID: " + str(id) + " not found")
 
     return item
 
@@ -102,7 +104,7 @@ def get_pages(item, session, page_start, page_end, page_limit):
     if isinstance(item, Article):
         first_page = item.pages.first()
         if first_page is None:
-            raise Exception(f"No pages found for article {item.id}")
+            raise ValueError(f"No pages found for article {item.id}")
         start_page = first_page.volume_running_page_num
         query = session.query(Page).filter(Page.articles.any(Article.id == item.id),
             Page.volume_running_page_num  >= page_start + start_page - 1,
@@ -226,5 +228,8 @@ def pdf_save():
 
             response = generate_pdf(item, session, page_start, page_end, page_limit, memory_limit)
             return response
-    except Exception as e:
+    except ValueError as e:
         return jsonify(Message=str(e)), 400
+    except Exception as e:
+        current_app.logger.exception(f'{e}')
+        return jsonify(Message='Internal error'), 500

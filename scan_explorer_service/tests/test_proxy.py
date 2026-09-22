@@ -146,6 +146,25 @@ class TestProxy(TestCaseDatabase):
         assert(response.is_streamed)
         assert(response.status_code == 200)
 
+    @patch('scan_explorer_service.views.image_proxy.item_thumbnail')
+    def test_thumbnail_internal_failure_does_not_leak_its_text(self, mock_thumbnail):
+        mock_thumbnail.side_effect = RuntimeError('could not connect to db.internal')
+        r = self.client.get(url_for('proxy.image_proxy_thumbnail', id=self.article.id, type='article'))
+        self.assertEqual(r.status_code, 500)
+        self.assertNotIn('db.internal', r.data.decode())
+
+    def test_thumbnail_for_an_item_with_no_pages_is_a_client_error(self):
+        r = self.client.get(url_for('proxy.image_proxy_thumbnail', id='NOT.A.REAL.ID', type='article'))
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('No pages found', json.loads(r.data)['Message'])
+
+    @patch('scan_explorer_service.views.image_proxy.get_item')
+    def test_pdf_internal_failure_does_not_leak_its_text(self, mock_get_item):
+        mock_get_item.side_effect = RuntimeError('could not connect to db.internal')
+        r = self.client.get(url_for('proxy.pdf_save', id=self.article.id))
+        self.assertEqual(r.status_code, 500)
+        self.assertNotIn('db.internal', r.data.decode())
+
     def test_get_item(self):
         """Test retrieving an item by its ID"""
         with self.app.app_context():

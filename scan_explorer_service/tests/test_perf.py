@@ -5,7 +5,7 @@ from flask import url_for
 from unittest.mock import patch, MagicMock
 from scan_explorer_service.tests.base import TestCaseDatabase
 from scan_explorer_service.models import Article, Base, Collection, Page
-from scan_explorer_service.utils.cache import cache_set_manifest, MANIFEST_CACHE_PREFIX
+from scan_explorer_service.utils.cache import cache_set_manifest, MANIFEST_CACHE_PREFIX, _variant_scope
 from scan_explorer_service.views.image_proxy import fetch_images
 import scan_explorer_service.utils.cache as cache_mod
 
@@ -95,7 +95,7 @@ class TestManifestCache(TestCaseDatabase):
     def test_cache_hit_returns_cached_json(self):
         """Verifies that a cached manifest is returned directly without regeneration."""
         mock_r, store = self._mock_redis()
-        store[MANIFEST_CACHE_PREFIX + self.article.id] = ('{"@type":"sc:Manifest","cached":true}', time.monotonic() + 3600)
+        store[MANIFEST_CACHE_PREFIX + _variant_scope() + self.article.id] = ('{"@type":"sc:Manifest","cached":true}', time.monotonic() + 3600)
 
         url = url_for("manifest.get_manifest", id=self.article.id)
         r = self.client.get(url)
@@ -106,7 +106,7 @@ class TestManifestCache(TestCaseDatabase):
     def test_cache_hit_returns_correct_content_type(self):
         """Verifies that cached manifest responses have application/json content type."""
         mock_r, store = self._mock_redis()
-        store[MANIFEST_CACHE_PREFIX + self.collection.id] = ('{"@type":"sc:Manifest"}', time.monotonic() + 3600)
+        store[MANIFEST_CACHE_PREFIX + _variant_scope() + self.collection.id] = ('{"@type":"sc:Manifest"}', time.monotonic() + 3600)
 
         url = url_for("manifest.get_manifest", id=self.collection.id)
         r = self.client.get(url)
@@ -128,12 +128,14 @@ class TestManifestCache(TestCaseDatabase):
         cache_set_manifest(self.article.id, '{"@type":"sc:Manifest"}')
 
         self.assertEqual(len(setex_calls), 1)
-        self.assertEqual(setex_calls[0], MANIFEST_CACHE_PREFIX + self.article.id)
+        self.assertEqual(
+            setex_calls[0],
+            'scan:manifest:http://localhost:8184/v1/scan:' + self.article.id)
 
     def test_cached_manifest_skips_manifest_factory(self):
         """Verifies that manifest_factory is not called when the manifest is cached."""
         mock_r, store = self._mock_redis()
-        store[MANIFEST_CACHE_PREFIX + self.article.id] = ('{"@type":"sc:Manifest"}', time.monotonic() + 3600)
+        store[MANIFEST_CACHE_PREFIX + _variant_scope() + self.article.id] = ('{"@type":"sc:Manifest"}', time.monotonic() + 3600)
 
         with patch('scan_explorer_service.views.manifest.manifest_factory') as mock_factory:
             url = url_for("manifest.get_manifest", id=self.article.id)
@@ -148,7 +150,7 @@ class TestManifestCache(TestCaseDatabase):
         url = url_for("manifest.get_manifest", id='nonexistent')
         r = self.client.get(url)
         self.assertStatus(r, 404)
-        self.assertNotIn(MANIFEST_CACHE_PREFIX + 'nonexistent', store)
+        self.assertNotIn(MANIFEST_CACHE_PREFIX + _variant_scope() + 'nonexistent', store)
 
     def test_redis_unavailable_falls_through(self):
         """Verifies that the endpoint still works when Redis is unavailable."""

@@ -4,6 +4,7 @@ from flask_restful import abort
 from scan_explorer_service.extensions import manifest_factory
 from scan_explorer_service.models import Article, Page, Collection
 from flask_discoverer import advertise
+from scan_explorer_service.views.view_utils import ApiErrors, search_error_response
 from scan_explorer_service.open_search import EsFields, text_search_highlight
 from scan_explorer_service.utils.utils import proxy_url, url_for_proxy
 from scan_explorer_service.utils.cache import (
@@ -104,25 +105,30 @@ def search(id: str):
     if cached is not None:
         return Response(cached, content_type='application/json')
 
-    with current_app.session_scope() as session:
-        item: Union[Article, Collection] = (
-                    session.query(Article).filter(Article.id == id).one_or_none()
-                    or session.query(Collection).filter(Collection.id == id).one_or_none())
-        if item:
-            annotation_list = manifest_factory.annotationList(request.url)
-            annotation_list.resources = []
+    try:
+        with current_app.session_scope() as session:
+            item: Union[Article, Collection] = (
+                        session.query(Article).filter(Article.id == id).one_or_none()
+                        or session.query(Collection).filter(Collection.id == id).one_or_none())
+            if item:
+                annotation_list = manifest_factory.annotationList(request.url)
+                annotation_list.resources = []
 
-            es_field = EsFields.article_id if isinstance(item, Article) else EsFields.volume_id
-            results = text_search_highlight(query, es_field, item.id)
+                es_field = EsFields.article_id if isinstance(item, Article) else EsFields.volume_id
+                results = text_search_highlight(query, es_field, item.id)
 
-            for res in results:
-                annotation = annotation_list.annotation(res['page_id'])
-                canvas_slice_url = url_for_proxy('manifest.get_canvas', page_id=res['page_id'])
-                annotation.on = canvas_slice_url
-                highlight_text = "<br><br>".join(res['highlight']).replace("em>", "b>")
-                annotation.text(highlight_text, format="text/html")
+                for res in results:
+                    highlight_text = "<br><br>".join(res['highlight']).replace("em>", "b>")
+                    if not highlight_text:
+                        continue
+                    annotation = annotation_list.annotation(res['page_id'])
+                    canvas_slice_url = url_for_proxy('manifest.get_canvas', page_id=res['page_id'])
+                    annotation.on = canvas_slice_url
+                    annotation.text(highlight_text, format="text/html")
 
-            return to_json_and_cache(annotation_list, cache_set_search, cache_key)
+                return to_json_and_cache(annotation_list, cache_set_search, cache_key)
 
-        else:
-            return jsonify(exception='Article or volume not found'), 404
+            else:
+                return jsonify(exception='Article or volume not found'), 404
+    except Exception as e:
+        return search_error_response(e)

@@ -1,4 +1,5 @@
 from typing import Dict
+from html import escape
 from iiif_prezi.factory import ManifestFactory, Sequence, Canvas, Image, Annotation, Manifest, Range
 from scan_explorer_service.models import Article, Page, Collection
 from typing import Union
@@ -68,7 +69,9 @@ class ManifestFactoryExtended(ManifestFactory):
 
         if len(page.articles) > 0:
             metadata = {
-                'Abstract': ''.join(f'<a href="https://ui.adsabs.harvard.edu/abs/{str(x.bibcode)}/abstract">{str(x.bibcode)}</a><br/>' for x in page.articles)
+                'Abstract': ''.join(
+                    f'<a href="/abs/{escape(str(article.bibcode))}/abstract">{escape(str(article.bibcode))}</a><br/>'
+                    for article in page.articles)
             }
             canvas.set_metadata(metadata)
 
